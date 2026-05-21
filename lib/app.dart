@@ -23,9 +23,14 @@ class _PpallaeAppState extends State<PpallaeApp> {
   void initState() {
     super.initState();
     final fallbackWeatherRepository = MockWeatherRepository();
+    final backendConfig = BackendWeatherApiConfig.fromEnvironment();
     final primaryWeatherRepository = kIsWeb
         ? BackendWeatherRepository(
-            config: BackendWeatherApiConfig.fromEnvironment(),
+            config: backendConfig.hasBaseUrl || !kDebugMode
+                ? backendConfig
+                : backendConfig.copyWith(
+                    baseUrl: 'http://localhost:8081/weather',
+                  ),
           )
         : KmaWeatherRepository(
             config: KmaWeatherApiConfig.fromEnvironment(),

@@ -98,4 +98,20 @@ class BackendWeatherApiConfig {
 
   bool get hasBaseUrl => baseUrl.trim().isNotEmpty;
   bool get hasApiKey => apiKey.trim().isNotEmpty;
+
+  BackendWeatherApiConfig copyWith({
+    String? providerName,
+    String? baseUrl,
+    String? apiKey,
+    int? requestTimeoutSeconds,
+    bool? enabled,
+  }) {
+    return BackendWeatherApiConfig(
+      providerName: providerName ?? this.providerName,
+      baseUrl: baseUrl ?? this.baseUrl,
+      apiKey: apiKey ?? this.apiKey,
+      requestTimeoutSeconds: requestTimeoutSeconds ?? this.requestTimeoutSeconds,
+      enabled: enabled ?? this.enabled,
+    );
+  }
 }
