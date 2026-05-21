@@ -7,8 +7,7 @@ void main() {
 
     expect(find.text('홈'), findsOneWidget);
     expect(find.text('주간'), findsOneWidget);
-    expect(find.text('지도'), findsOneWidget);
     expect(find.text('설정'), findsOneWidget);
-    expect(find.text('오늘의 빨래 지수'), findsOneWidget);
+    expect(find.text('빨래하기 좋은 타이밍'), findsOneWidget);
   });
 }

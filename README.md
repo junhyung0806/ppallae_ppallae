@@ -55,14 +55,22 @@ docker compose up --build
 
 ```powershell
 flutter pub get
-flutter run -d chrome --dart-define=WEATHER_BACKEND_BASE_URL=http://localhost:8081/weather
+flutter run -d chrome --web-port=8080 --dart-define=WEATHER_BACKEND_BASE_URL=http://localhost:8081/weather
 ```
 
 옵션으로 앱 전용 API 키를 사용할 경우:
 
 ```powershell
-flutter run -d chrome --dart-define=WEATHER_BACKEND_BASE_URL=http://localhost:8081/weather --dart-define=WEATHER_BACKEND_API_KEY=your-client-key
+flutter run -d chrome --web-port=8080 --dart-define=WEATHER_BACKEND_BASE_URL=http://localhost:8081/weather --dart-define=WEATHER_BACKEND_API_KEY=your-client-key
 ```
+
+### Kakao 지도 설정
+
+웹 지도는 `web/index.html`의 Kakao JavaScript SDK 앱 키를 사용합니다. Kakao Developers 콘솔에서 해당 앱의 Web 플랫폼 사이트 도메인에 로컬 실행 주소를 등록해야 합니다.
+
+- 로컬 권장 도메인: `http://localhost:8080`
+- `flutter run -d chrome`만 실행하면 매번 임의 포트가 잡힐 수 있으므로, 위 예시처럼 `--web-port=8080`을 붙여 실행하세요.
+- 주소 변환용 Kakao Local REST API를 쓰려면 `--dart-define=KAKAO_REST_API_KEY=your-rest-api-key`를 추가하세요. 없으면 OpenStreetMap 주소 변환으로 대체됩니다.
 
 ## 환경 변수
 

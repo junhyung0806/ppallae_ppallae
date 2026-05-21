@@ -193,11 +193,11 @@ class _DifficultySelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 56,
+      height: 64,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: LaundryDifficulty.values.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        separatorBuilder: (context, index) => const SizedBox(width: 10),
         itemBuilder: (context, index) {
           final difficulty = LaundryDifficulty.values[index];
           return _LaundryDifficultyChip(
@@ -241,7 +241,7 @@ class _LaundryDifficultyChip extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.center,

@@ -743,6 +743,14 @@ class _WebKakaoMapWidgetState extends State<WebKakaoMapWidget> {
   }
 
   void _reportDiagnostic(WebMapDiagnostic diagnostic) {
+    debugPrint(
+      '[WebKakaoMapWidget] stage=${diagnostic.stage} '
+      'code=${diagnostic.code ?? '-'} ready=${diagnostic.isReady} '
+      'message=${diagnostic.message}',
+    );
+    if (diagnostic.details.isNotEmpty) {
+      debugPrint('[WebKakaoMapWidget] details=${diagnostic.details}');
+    }
     widget.onDiagnosticChanged(diagnostic);
   }
 

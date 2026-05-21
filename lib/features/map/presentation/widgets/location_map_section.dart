@@ -322,7 +322,7 @@ class _LocationMapSectionState extends State<LocationMapSection> {
         return '지도 영역 준비가 지연되고 있어 다시 시도 중입니다.';
       case 'MAP-007':
       case 'MAP-008':
-        return '지도를 생성하거나 갱신하는 중 문제가 생겼습니다.';
+        return '지도를 생성하지 못했습니다. Kakao JavaScript 키와 Web 플랫폼 허용 도메인을 확인해주세요.';
       default:
         return diagnostic.isReady
             ? '지도가 정상적으로 준비되었습니다.'
