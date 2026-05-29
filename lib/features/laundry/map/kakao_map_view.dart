@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'kakao_map_view_stub.dart'
+import 'kakao_map_view_mobile.dart'
     if (dart.library.html) 'kakao_map_view_web.dart';
 
 /// 카카오맵 위치 선택 지도.
