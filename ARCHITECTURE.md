@@ -1,66 +1,58 @@
-# Ppallae Architecture
+# 빨래빨래 아키텍처
 
 ## 전체 개요
 
-`ppallae_ppallae`는 Flutter 프론트엔드와 FastAPI 백엔드가 협력하는 멀티모달 날씨 기반 빨래 추천 애플리케이션입니다.
+날씨 기반 빨래 타이밍 추천 서비스. 모노레포로 앱·백엔드·관리자를 함께 둡니다.
 
-- Flutter 앱: 사용자 위치와 날씨, 빨래 추천 UI
-- FastAPI 백엔드: KMA API 요청, 응답 캐시, 안전한 인증키 관리
-- PostgreSQL + PostGIS: 위치 기반 데이터 확장 준비
+- **Flutter 앱** (`lib/`): 위치 기반 빨래지수·예보·지도·빨래방 UI. 자체 백엔드 API만 호출
+- **NestJS 백엔드** (`apps/backend/`): 공공 API 수집·캐싱·빨래지수 계산·관리자 인증. 모든 비밀키 보관
+- **Next.js 관리자** (`apps/admin/`): 공지/빨래종류/설정 관리, 대시보드, 감사 로그
+- **PostgreSQL + PostGIS / Redis**: 영속 데이터 + 캐시/큐
 
-## 주요 컴포넌트
+## 백엔드 모듈 (`apps/backend/src/`)
 
-### Flutter 앱 (`lib/`)
+| 모듈 | 역할 |
+|------|------|
+| `modules/weather` | 기상청 격자 변환 + 초단기실황/초단기예보/동네예보 (KMA provider + mock) |
+| `modules/air-quality` | 에어코리아 미세먼지 (AirKorea provider + mock) |
+| `modules/laundry-score` | 빨래지수 알고리즘 + VPD 증발 기반 건조시간 (순수 함수 + 테스트) |
+| `modules/data-ingestion` | BullMQ 워커 — 지역별 날씨/미세먼지 수집·캐싱 (cron fan-out) |
+| `modules/weather-query` | 캐시→온디맨드 수집→DB 폴백 + stale 판정 |
+| `modules/regions` | 지역 검색, 좌표→행정구역 변환 (lat/lng 미저장) |
+| `modules/laundry-types` | 빨래 종류 3종 |
+| `modules/laundromats` | 주변 빨래방 (카카오 로컬 + mock) |
+| `modules/widget` `notices` `app-config` | 위젯 요약, 공지, 공개 설정 |
+| `modules/admin` | JWT 인증, 관리 API, 감사 로그 |
+| `prisma` `redis` `cache` `health` | 인프라 |
 
-- `lib/main.dart`: 앱 진입점
-- `lib/app.dart`: 전역 앱 구성
-- `lib/features/home/`: 위치 검색과 시작 화면
-- `lib/features/map/`: 지도 기반 위치 탐색
-- `lib/features/recommendation/`: 빨래 추천 로직과 상태
-- `lib/features/settings/`: 사용자 설정
-- `lib/features/weekly/`: 주간 예보 및 패턴 확인
+전역: helmet, ThrottlerGuard(레이트리밋), ValidationPipe, URI 버저닝(`/api/v1`), 환경변수 검증.
 
-### 백엔드 (`backend/app/`)
+## Flutter 앱 (`lib/`)
 
-- `backend/app/main.py`: FastAPI 애플리케이션 시작
-- `backend/app/config.py`: 환경 변수 기반 설정 관리
-- `backend/app/kma.py`: 기상청 API 호출, 좌표 변환 및 예외 처리
-- `backend/app/models.py`: SQLAlchemy 모델 정의
-- `backend/sql/init_postgis.sql`: PostGIS 초기화 스크립트
+- `main.dart` → `features/laundry/laundry_shell.dart` (홈/설정 탭)
+- `features/laundry/laundry_home_controller.dart`: 상태(지역·점수·예보·빨래방·즐겨찾기·GPS), ChangeNotifier
+- `features/laundry/laundry_home_screen.dart`: 점수/날씨/추천시간/지도/시간별/빨래방
+- `features/laundry/map/`: 카카오맵 웹 위젯 (조건부 import, 비웹 스텁)
+- `api/`: 백엔드 HTTP 클라이언트 + 모델
+- `widget_service.dart`: 안드로이드 홈 위젯(home_widget) 갱신
 
-### 인프라
+## 데이터 흐름
 
-- `backend/Dockerfile`: 백엔드 컨테이너 이미지
-- `backend/docker-compose.yml`: PostGIS DB와 FastAPI 백엔드 함께 실행
-- `backend/.env.example`: 로컬/개발 환경 변수 템플릿
+1. 앱이 GPS 좌표를 얻어 `GET /regions/current?lat&lng`로 행정구역 변환 (좌표는 변환에만, 미저장)
+2. `GET /laundry-score/current?regionCode&...` 호출
+3. 백엔드 `WeatherQueryService`: Redis 캐시 → 없으면 온디맨드 수집(KMA+AirKorea) → 실패 시 DB 폴백, 90분 초과면 `stale`
+4. `laundry-score`가 증발지수(VPD×바람×일사) 기반으로 점수·등급·건조시간·추천시간 계산
+5. 앱은 점수/날씨/시간별/추천시간 표시. 별도로 `/laundromats/nearby`로 주변 빨래방 로드
+6. BullMQ 스케줄러가 주기적으로 지역별 데이터를 미리 수집·캐싱
 
-## 데이터/요청 흐름
+## 보안
 
-1. 사용자가 Flutter 앱에서 위치를 선택하거나 현재 위치를 허용합니다.
-2. 앱은 `WEATHER_BACKEND_BASE_URL`에 정의된 백엔드 URL로 `GET /weather` 요청을 보냅니다.
-3. 백엔드는 요청된 `lat`, `lng` 값을 받아 캐시에서 날씨 데이터를 확인합니다.
-4. 캐시에 항목이 없거나 만료된 경우 KMA API를 호출해 날씨 데이터를 가져옵니다.
-5. 백엔드는 날씨 데이터를 앱 친화형 JSON 형식으로 변환하여 응답합니다.
-6. Flutter 앱은 받은 데이터를 기반으로 빨래 적합도, 습도, 강수 확률 등을 계산하여 추천 UI를 업데이트합니다.
+- 공공/카카오 비밀키는 서버 `.env`에만 (앱엔 카카오맵 JS키만, 도메인 제한)
+- 앱은 공공 API 직접 호출 안 함 — 자체 백엔드 경유
+- GPS 좌표 미저장 (nx/ny·행정코드만)
+- JWT(bcrypt) 관리자 인증, 로그인 레이트리밋, 운영 시 강한 JWT 시크릿 강제
+- helmet 보안 헤더, 입력 검증 DTO, Prisma 파라미터화 쿼리
 
-## 보안 및 확장 설계
+## 빌드/실행
 
-- KMA 인증키는 클라이언트가 아닌 서버에서만 사용됩니다.
-- `backend/.env.example`로 환경 변수를 관리하여 비밀값이 코드에 포함되지 않게 합니다.
-- 백엔드는 캐시 TTL(`WEATHER_CACHE_TTL_SECONDS`)과 요청 제한(`WEATHER_RATE_LIMIT_PER_MINUTE`)을 지원합니다.
-- PostGIS 기반 모델은 위치/빨래방 정보를 저장하고 추천 엔진 확장으로 이어질 수 있습니다.
-
-## 포트폴리오용 핵심 포인트
-
-- 클라이언트/서버 분리 + 백엔드 API 설계
-- 외부 공공 데이터(KMA) 통합 및 안전한 키 관리
-- Flutter 멀티 플랫폼 UI 구현 경험
-- Docker Compose를 이용한 로컬 개발 환경 구축
-- 위치 기반 애플리케이션을 위한 공간 데이터 설계
-
-## 향후 개선 방향
-
-- 빨래방 추천과 사용자 위치 기반 추천 로직
-- 사용자 행동 기록 기반 개인화
-- Push 알림 또는 스케줄 알림
-- 인증 기반 사용자 계정 및 클라우드 배포
+`docker compose up db redis -d` → 백엔드 `npm run start:dev` → 앱 `flutter run`. 자세한 건 `README.md`.
