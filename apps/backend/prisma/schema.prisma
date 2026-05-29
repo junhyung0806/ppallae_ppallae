@@ -1,0 +1,209 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── 지역 ───
+
+model Region {
+  id              String   @id @default(cuid())
+  admCode         String   @unique @map("adm_code")
+  sido            String
+  sigungu         String
+  eupmyeondong    String
+  nx              Int
+  ny              Int
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  weatherSnapshots       WeatherSnapshot[]
+  weatherForecastHourly  WeatherForecastHourly[]
+  airQualitySnapshots    AirQualitySnapshot[]
+  laundryScoreResults    LaundryScoreResult[]
+
+  @@index([nx, ny])
+  @@index([sido, sigungu])
+  @@map("regions")
+}
+
+// ─── 날씨 현재 ───
+
+model WeatherSnapshot {
+  id              String   @id @default(cuid())
+  regionId        String   @map("region_id")
+  temperatureC    Float    @map("temperature_c")
+  humidityPercent Int      @map("humidity_percent")
+  windSpeedMps    Float    @map("wind_speed_mps")
+  precipType      String   @default("NONE") @map("precip_type")
+  skyCondition    String   @default("CLEAR") @map("sky_condition")
+  observedAt      DateTime @map("observed_at")
+  source          String   @default("KMA")
+  rawPayload      Json?    @map("raw_payload")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  region Region @relation(fields: [regionId], references: [id])
+
+  @@index([regionId, observedAt])
+  @@map("weather_snapshots")
+}
+
+// ─── 시간별 예보 ───
+
+model WeatherForecastHourly {
+  id                      String   @id @default(cuid())
+  regionId                String   @map("region_id")
+  forecastAt              DateTime @map("forecast_at")
+  temperatureC            Float    @map("temperature_c")
+  humidityPercent         Int      @map("humidity_percent")
+  windSpeedMps            Float    @map("wind_speed_mps")
+  precipType              String   @default("NONE") @map("precip_type")
+  precipitationProbability Int     @default(0) @map("precipitation_probability")
+  skyCondition            String   @default("CLEAR") @map("sky_condition")
+  source                  String   @default("KMA")
+  createdAt               DateTime @default(now()) @map("created_at")
+
+  region Region @relation(fields: [regionId], references: [id])
+
+  @@unique([regionId, forecastAt])
+  @@map("weather_forecast_hourly")
+}
+
+// ─── 미세먼지 ───
+
+model AirQualitySnapshot {
+  id          String   @id @default(cuid())
+  regionId    String   @map("region_id")
+  pm10Value   Float?   @map("pm10_value")
+  pm10Grade   Int?     @map("pm10_grade")
+  pm25Value   Float?   @map("pm25_value")
+  pm25Grade   Int?     @map("pm25_grade")
+  stationName String?  @map("station_name")
+  observedAt  DateTime @map("observed_at")
+  source      String   @default("AIRKOREA")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  region Region @relation(fields: [regionId], references: [id])
+
+  @@index([regionId, observedAt])
+  @@map("air_quality_snapshots")
+}
+
+// ─── 빨래 종류 (3종: 얇음/중간/두꺼움) ───
+
+model LaundryType {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  nameKo          String   @map("name_ko")
+  description     String
+  examples        String[]
+  baseDryHoursMin Float    @map("base_dry_hours_min")
+  baseDryHoursMax Float    @map("base_dry_hours_max")
+  sortOrder       Int      @default(0) @map("sort_order")
+  isActive        Boolean  @default(true) @map("is_active")
+  cautionText     String?  @map("caution_text")
+  goodText        String?  @map("good_text")
+  badText         String?  @map("bad_text")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  laundryScoreResults LaundryScoreResult[]
+
+  @@map("laundry_types")
+}
+
+// ─── 빨래지수 결과 ───
+
+model LaundryScoreResult {
+  id                    String   @id @default(cuid())
+  regionId              String   @map("region_id")
+  laundryTypeId         String   @map("laundry_type_id")
+  dryingPlace           String   @map("drying_place")
+  laundryAmount         String   @default("MEDIUM") @map("laundry_amount")
+  overallScore          Int      @map("overall_score")
+  outdoorScore          Int?     @map("outdoor_score")
+  indoorScore           Int?     @map("indoor_score")
+  estimatedDryHoursMin  Float    @map("estimated_dry_hours_min")
+  estimatedDryHoursMax  Float    @map("estimated_dry_hours_max")
+  grade                 String
+  recommendationText    String   @map("recommendation_text")
+  warningTexts          String[] @map("warning_texts")
+  bestStartTimeRange    String?  @map("best_start_time_range")
+  generatedAt           DateTime @map("generated_at")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  region      Region      @relation(fields: [regionId], references: [id])
+  laundryType LaundryType @relation(fields: [laundryTypeId], references: [id])
+
+  @@index([regionId, generatedAt])
+  @@index([laundryTypeId])
+  @@map("laundry_score_results")
+}
+
+// ─── 공지사항 ───
+
+model AppNotice {
+  id          String    @id @default(cuid())
+  title       String
+  content     String
+  isActive    Boolean   @default(true) @map("is_active")
+  priority    Int       @default(0)
+  startAt     DateTime? @map("start_at")
+  endAt       DateTime? @map("end_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@map("app_notices")
+}
+
+// ─── 앱 설정 ───
+
+model AppConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  isPublic  Boolean  @default(false) @map("is_public")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("app_configs")
+}
+
+// ─── 관리자 ───
+
+model AdminUser {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  passwordHash   String    @map("password_hash")
+  name           String
+  role           String    @default("ADMIN")
+  lastLoginAt    DateTime? @map("last_login_at")
+  isActive       Boolean   @default(true) @map("is_active")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  auditLogs AuditLog[]
+
+  @@map("admin_users")
+}
+
+// ─── 감사 로그 ───
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  adminUserId String   @map("admin_user_id")
+  action      String
+  target      String?
+  detail      Json?
+  ipAddress   String?  @map("ip_address")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  adminUser AdminUser @relation(fields: [adminUserId], references: [id])
+
+  @@index([adminUserId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

@@ -43,3 +43,18 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Backend
+apps/backend/node_modules/
+apps/backend/dist/
+apps/backend/.env
+apps/backend/.env.local
+apps/backend/coverage/
+
+# Admin (Next.js)
+apps/admin/node_modules/
+apps/admin/.next/
+apps/admin/out/
+apps/admin/.env
+apps/admin/.env.local
+apps/admin/next-env.d.ts
