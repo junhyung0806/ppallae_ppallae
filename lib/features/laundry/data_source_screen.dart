@@ -64,9 +64,10 @@ class DataSourceScreen extends StatelessWidget {
             icon: Icons.lock_outline,
             title: '위치정보 처리 안내',
             body:
-                '현재 위치(GPS) 좌표는 지역(행정구역) 변환과 지도 표시에만 사용되며, '
-                '서버에 저장되지 않습니다. 서버에는 기상청 격자 좌표(nx, ny) 또는 '
-                '지역 코드만 사용됩니다.',
+                '현재 위치(GPS) 좌표는 지역(행정구역) 변환과 지도 표시에 사용됩니다. '
+                '좌표는 서버의 지역 변환 API에 전송되어 행정구역 코드와 기상청 격자 좌표(nx, ny)로 '
+                '바뀐 뒤 응답을 받으며, 변환 후의 좌표값은 서버에 저장되지 않습니다. '
+                '빨래지수 계산과 캐시에는 지역 코드와 격자 좌표만 사용됩니다.',
           ),
           _InfoCard(
             icon: Icons.info_outline,

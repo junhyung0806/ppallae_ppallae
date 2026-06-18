@@ -20,7 +20,15 @@
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="A new Flutter project.">
 
+  <!--
+    TODO(release): Kakao JavaScript 키 교체 지점 (web/index.html, 총 2곳).
+      현재 값은 개발용 테스트 키. 출시 전 비즈니스 채널 키로 교체하고,
+      카카오 개발자 콘솔의 "Web 플랫폼 사이트 도메인" 에 운영 도메인을 등록해야 한다.
+      키 자체는 채팅/PR/문서에 평문으로 남기지 말고 보안 채널로 관리.
+      참고: [[project_kakao_map]]
+  -->
   <script>
+    // TODO(release): JS 키 교체 — appkey 파라미터를 운영용 키로 변경.
     window.__kakaoSdkScriptUrl = 'https://dapi.kakao.com/v2/maps/sdk.js?appkey=028e4dd5f3256a25d2e9e11ae30a9eb3&autoload=false&libraries=services';
     window.__kakaoSdkScriptLoaded = false;
     window.__kakaoSdkLoaded = false;
@@ -35,6 +43,7 @@
     src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=028e4dd5f3256a25d2e9e11ae30a9eb3&autoload=false&libraries=services"
     onload="window.__kakaoSdkScriptLoaded = true;"
     onerror="window.__kakaoSdkLoadError = true; window.__kakaoSdkLoadErrorMessage = 'script onerror triggered';">
+    <!-- TODO(release): 위 src 의 appkey 도 같은 운영 JS 키로 교체. -->
   </script>
 
   <!-- iOS meta tags & icons -->

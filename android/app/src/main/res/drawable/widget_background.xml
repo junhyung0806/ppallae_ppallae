@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 폴백 배경: 점수 데이터가 아직 없거나 위젯이 비활성 상태일 때 사용 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="#FFFFFFFF" />
-    <corners android:radius="20dp" />
+    <solid android:color="#FF4A5763" />
+    <corners android:radius="24dp" />
 </shape>

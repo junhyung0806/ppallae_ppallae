@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  사이즈는 2x1. 파일/클래스 이름은 기존 '3x1' 유지 (호환).
+  Samsung One UI는 minWidth/Height를 (값+30)/70 → round 공식으로 cell 환산.
+  minHeight 90dp → (90+30)/70 = 1.71 → 2 cell로 잡힘 → 2x2가 됨.
+  1 cell tall로 강제하려면 minHeight ≤ 70dp 필요.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="110dp"
+    android:minHeight="70dp"
+    android:targetCellWidth="2"
+    android:targetCellHeight="1"
+    android:updatePeriodMillis="1800000"
+    android:initialLayout="@layout/ppallae_widget_3x1_normal"
+    android:resizeMode="horizontal"
+    android:widgetCategory="home_screen" />

@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 2x1 EXCELLENT (파랑). 컴팩트 디자인 + 슬라이더 dot 4슬롯. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/widget_bg_excellent"
+    android:padding="10dp">
+
+    <TextView
+        android:id="@+id/widget_reco"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="추천 시간 : --:-- ~ --:--"
+        android:textColor="#E6FFFFFF"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:maxLines="1"
+        android:ellipsize="end" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginTop="2dp">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="horizontal"
+            android:gravity="bottom">
+
+            <TextView
+                android:id="@+id/widget_score"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="-"
+                android:textColor="#FFFFFFFF"
+                android:textSize="42sp"
+                android:textStyle="bold"
+                android:includeFontPadding="false" />
+
+            <TextView
+                android:id="@+id/widget_grade"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="-"
+                android:textColor="#FFFFFFFF"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:includeFontPadding="false"
+                android:layout_marginStart="4dp"
+                android:layout_marginBottom="0dp" />
+        </LinearLayout>
+
+        <ImageView
+            android:id="@+id/widget_icon"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:scaleType="fitCenter"
+            android:contentDescription="빨래지수 아이콘"
+            android:src="@drawable/widget_grade_excellent" />
+    </LinearLayout>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="14dp"
+        android:layout_marginTop="4dp">
+
+        <ProgressBar
+            android:id="@+id/widget_score_bar"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="4dp"
+            android:layout_gravity="center_vertical"
+            android:max="100"
+            android:progress="0"
+            android:progressTint="#FFFFFFFF"
+            android:progressBackgroundTint="#40FFFFFF" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:weightSum="4">
+
+            <FrameLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1">
+                <ImageView android:id="@+id/widget_dot_0" android:layout_width="12dp" android:layout_height="12dp"
+                    android:layout_gravity="center" android:src="@drawable/widget_progress_dot"
+                    android:visibility="gone" android:contentDescription="@null" />
+            </FrameLayout>
+            <FrameLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1">
+                <ImageView android:id="@+id/widget_dot_1" android:layout_width="12dp" android:layout_height="12dp"
+                    android:layout_gravity="center" android:src="@drawable/widget_progress_dot"
+                    android:visibility="gone" android:contentDescription="@null" />
+            </FrameLayout>
+            <FrameLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1">
+                <ImageView android:id="@+id/widget_dot_2" android:layout_width="12dp" android:layout_height="12dp"
+                    android:layout_gravity="center" android:src="@drawable/widget_progress_dot"
+                    android:visibility="gone" android:contentDescription="@null" />
+            </FrameLayout>
+            <FrameLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1">
+                <ImageView android:id="@+id/widget_dot_3" android:layout_width="12dp" android:layout_height="12dp"
+                    android:layout_gravity="center" android:src="@drawable/widget_progress_dot"
+                    android:visibility="gone" android:contentDescription="@null" />
+            </FrameLayout>
+        </LinearLayout>
+    </FrameLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="1dp">
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:gravity="center" android:text="나쁨" android:textColor="#B3FFFFFF" android:textSize="8sp" />
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:gravity="center" android:text="보통" android:textColor="#B3FFFFFF" android:textSize="8sp" />
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:gravity="center" android:text="좋음" android:textColor="#B3FFFFFF" android:textSize="8sp" />
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:gravity="center" android:text="최고" android:textColor="#B3FFFFFF" android:textSize="8sp" />
+    </LinearLayout>
+</LinearLayout>

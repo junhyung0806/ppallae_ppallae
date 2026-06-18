@@ -1,5 +1,141 @@
 // 새 NestJS 백엔드 응답 모델
 
+/// `GET /notices/active` 응답 1건.
+/// startAt/endAt 은 null 가능 (상시 공지).
+class NoticeModel {
+  const NoticeModel({
+    required this.id,
+    required this.title,
+    required this.content,
+    required this.isImportant,
+    required this.priority,
+    required this.createdAt,
+    this.startAt,
+    this.endAt,
+  });
+
+  factory NoticeModel.fromJson(Map<String, dynamic> json) {
+    return NoticeModel(
+      id: json['id'] as String,
+      title: json['title'] as String,
+      content: json['content'] as String? ?? '',
+      isImportant: json['isImportant'] as bool? ?? false,
+      priority: (json['priority'] as num?)?.toInt() ?? 0,
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      startAt: json['startAt'] == null
+          ? null
+          : DateTime.parse(json['startAt'] as String),
+      endAt:
+          json['endAt'] == null ? null : DateTime.parse(json['endAt'] as String),
+    );
+  }
+
+  final String id;
+  final String title;
+  final String content;
+  final bool isImportant;
+  final int priority;
+  final DateTime createdAt;
+  final DateTime? startAt;
+  final DateTime? endAt;
+}
+
+/// `GET /app-config/public` 응답.
+/// 강제 업데이트, 점검 모드, 정책 URL, 피처 플래그를 한 번에 전달.
+/// 시작 시 1회 fetch 해 캐시하여 화면들이 참조.
+class AppConfigModel {
+  const AppConfigModel({
+    required this.versions,
+    required this.maintenance,
+    required this.urls,
+    required this.featureFlags,
+  });
+
+  factory AppConfigModel.fromJson(Map<String, dynamic> json) {
+    return AppConfigModel(
+      versions: AppVersionsModel.fromJson(
+          (json['versions'] as Map<String, dynamic>?) ?? const {}),
+      maintenance: AppMaintenanceModel.fromJson(
+          (json['maintenance'] as Map<String, dynamic>?) ?? const {}),
+      urls:
+          AppUrlsModel.fromJson((json['urls'] as Map<String, dynamic>?) ?? const {}),
+      featureFlags: ((json['featureFlags'] as Map<String, dynamic>?) ?? const {})
+          .map((k, v) => MapEntry(k, v as bool)),
+    );
+  }
+
+  final AppVersionsModel versions;
+  final AppMaintenanceModel maintenance;
+  final AppUrlsModel urls;
+  final Map<String, bool> featureFlags;
+}
+
+class AppVersionsModel {
+  const AppVersionsModel({
+    required this.minimumSupported,
+    required this.latest,
+    required this.forceUpdate,
+  });
+
+  factory AppVersionsModel.fromJson(Map<String, dynamic> json) {
+    return AppVersionsModel(
+      minimumSupported: json['minimumSupported'] as String? ?? '0.0.0',
+      latest: json['latest'] as String? ?? '0.0.0',
+      forceUpdate: json['forceUpdate'] as bool? ?? false,
+    );
+  }
+
+  final String minimumSupported;
+  final String latest;
+  final bool forceUpdate;
+}
+
+class AppMaintenanceModel {
+  const AppMaintenanceModel({required this.enabled, required this.message});
+
+  factory AppMaintenanceModel.fromJson(Map<String, dynamic> json) {
+    return AppMaintenanceModel(
+      enabled: json['enabled'] as bool? ?? false,
+      message: json['message'] as String? ?? '',
+    );
+  }
+
+  final bool enabled;
+  final String message;
+}
+
+class AppUrlsModel {
+  const AppUrlsModel({
+    required this.privacyPolicy,
+    required this.terms,
+    required this.locationTerms,
+    required this.openSource,
+    required this.dataSource,
+    required this.support,
+    required this.customerCenter,
+  });
+
+  factory AppUrlsModel.fromJson(Map<String, dynamic> json) {
+    return AppUrlsModel(
+      privacyPolicy: json['privacyPolicy'] as String? ?? '',
+      terms: json['terms'] as String? ?? '',
+      locationTerms: json['locationTerms'] as String? ?? '',
+      openSource: json['openSource'] as String? ?? '',
+      dataSource: json['dataSource'] as String? ?? '',
+      support: json['support'] as String? ?? '',
+      customerCenter: json['customerCenter'] as String? ?? '',
+    );
+  }
+
+  final String privacyPolicy;
+  final String terms;
+  final String locationTerms;
+  final String openSource;
+  final String dataSource;
+  final String support;
+  final String customerCenter;
+}
+
 class RegionModel {
   const RegionModel({
     required this.admCode,
@@ -42,6 +178,32 @@ class RegionModel {
   final String displayName;
 }
 
+/// 주변 빨래방 응답 묶음 — source 보존.
+/// 백엔드가 카카오 REST 키 없거나 실패하면 `source: 'mock'` 또는 `'mock_fallback'`
+/// 으로 응답할 수 있음. UI에서 사용자에게 명시해야 진짜 주변 빨래방으로 오해 안 함.
+class LaundromatsEnvelopeModel {
+  const LaundromatsEnvelopeModel({
+    required this.items,
+    required this.source,
+  });
+
+  factory LaundromatsEnvelopeModel.fromJson(Map<String, dynamic> json) {
+    final items = (json['items'] as List<dynamic>? ?? [])
+        .map((e) => LaundromatModel.fromJson(e as Map<String, dynamic>))
+        .toList();
+    return LaundromatsEnvelopeModel(
+      items: items,
+      source: json['source'] as String? ?? '',
+    );
+  }
+
+  final List<LaundromatModel> items;
+  final String source;
+
+  bool get isMock =>
+      source.contains('mock') || source.toLowerCase().contains('fallback');
+}
+
 class LaundromatModel {
   const LaundromatModel({
     required this.name,
@@ -82,6 +244,7 @@ class LaundryTypeModel {
     required this.examples,
     required this.baseDryHoursMin,
     required this.baseDryHoursMax,
+    required this.cautionText,
   });
 
   factory LaundryTypeModel.fromJson(Map<String, dynamic> json) {
@@ -93,6 +256,7 @@ class LaundryTypeModel {
           (json['examples'] as List<dynamic>).map((e) => e as String).toList(),
       baseDryHoursMin: (json['baseDryHoursMin'] as num).toDouble(),
       baseDryHoursMax: (json['baseDryHoursMax'] as num).toDouble(),
+      cautionText: json['cautionText'] as String? ?? '',
     );
   }
 
@@ -102,6 +266,7 @@ class LaundryTypeModel {
   final List<String> examples;
   final double baseDryHoursMin;
   final double baseDryHoursMax;
+  final String cautionText;
 }
 
 class LaundryScoreModel {
@@ -112,9 +277,7 @@ class LaundryScoreModel {
     required this.estimatedDryHoursMin,
     required this.estimatedDryHoursMax,
     required this.grade,
-    required this.recommendationText,
     required this.warningTexts,
-    this.bestStartTimeRange,
   });
 
   factory LaundryScoreModel.fromJson(Map<String, dynamic> json) {
@@ -125,11 +288,9 @@ class LaundryScoreModel {
       estimatedDryHoursMin: (json['estimatedDryHoursMin'] as num).toDouble(),
       estimatedDryHoursMax: (json['estimatedDryHoursMax'] as num).toDouble(),
       grade: json['grade'] as String,
-      recommendationText: json['recommendationText'] as String,
       warningTexts: (json['warningTexts'] as List<dynamic>)
           .map((e) => e as String)
           .toList(),
-      bestStartTimeRange: json['bestStartTimeRange'] as String?,
     );
   }
 
@@ -139,9 +300,7 @@ class LaundryScoreModel {
   final double estimatedDryHoursMin;
   final double estimatedDryHoursMax;
   final String grade;
-  final String recommendationText;
   final List<String> warningTexts;
-  final String? bestStartTimeRange;
 }
 
 class WeatherSummaryModel {
@@ -215,6 +374,7 @@ class TimelineEntryModel {
   const TimelineEntryModel({
     required this.forecastAt,
     required this.hourOfDay,
+    required this.displayTime,
     required this.overallScore,
     required this.grade,
     required this.estimatedDryHoursMin,
@@ -229,6 +389,7 @@ class TimelineEntryModel {
     return TimelineEntryModel(
       forecastAt: DateTime.parse(json['forecastAt'] as String),
       hourOfDay: json['hourOfDay'] as int,
+      displayTime: json['displayTime'] as String?,
       overallScore: json['overallScore'] as int,
       grade: json['grade'] as String,
       estimatedDryHoursMin: (json['estimatedDryHoursMin'] as num).toDouble(),
@@ -242,6 +403,7 @@ class TimelineEntryModel {
 
   final DateTime forecastAt;
   final int hourOfDay;
+  final String? displayTime;
   final int overallScore;
   final String grade;
   final double estimatedDryHoursMin;

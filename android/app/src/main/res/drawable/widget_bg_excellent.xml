@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- EXCELLENT 파랑 — 그라데이션 라이트(좌상) → 다크(우하) -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:type="linear"
+        android:angle="315"
+        android:startColor="#FF7DBCE0"
+        android:endColor="#FF4691C5" />
+    <corners android:radius="24dp" />
+</shape>

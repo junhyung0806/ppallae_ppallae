@@ -1,10 +1,16 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../api/models/api_models.dart';
+import 'grade_utils.dart';
 import 'laundry_home_controller.dart';
 import 'map/kakao_map_view.dart';
-import 'region_search_screen.dart';
+import 'map_fullscreen_screen.dart';
+import 'settings_screen.dart';
+
+// grade_utils 의 gradeFromScore / gradeLabel 을 같은 파일 식별자처럼 노출.
+// 점수→등급 / 라벨은 모바일 모든 곳에서 단일 모듈을 통해서만 접근.
 
 class LaundryHomeScreen extends StatelessWidget {
   const LaundryHomeScreen({super.key, required this.controller});
@@ -13,15 +19,20 @@ class LaundryHomeScreen extends StatelessWidget {
 
   LaundryHomeController get _controller => controller;
 
-  Future<void> _openRegionSearch(BuildContext context) async {
-    final region = await Navigator.of(context).push<RegionModel>(
+  void _openMap(BuildContext context) {
+    Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => RegionSearchScreen(apiClient: _controller.api),
+        builder: (_) => MapFullscreenScreen(controller: _controller),
       ),
     );
-    if (region != null) {
-      await _controller.selectRegion(region);
-    }
+  }
+
+  void _openSettings(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SettingsScreen(controller: _controller),
+      ),
+    );
   }
 
   @override
@@ -35,23 +46,22 @@ class LaundryHomeScreen extends StatelessWidget {
             return RefreshIndicator(
               onRefresh: _controller.refresh,
               child: ListView(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
                 children: [
-                  const _AppHeader(),
-                  const SizedBox(height: 12),
-                  _RegionHeader(
+                  _TopBar(
                     controller: _controller,
-                    onSearch: () => _openRegionSearch(context),
+                    onMap: () => _openMap(context),
+                    onSettings: () => _openSettings(context),
                   ),
-                  if (_controller.favorites.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    _FavoritesBar(controller: _controller),
+                  if (_controller.isUsingFallbackRegion) ...[
+                    const SizedBox(height: 10),
+                    _FallbackRegionBanner(controller: _controller),
                   ],
                   if (_controller.locationNotice != null) ...[
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
                     _LocationNoticeBanner(controller: _controller),
                   ],
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
                   if (_controller.error != null)
                     _ErrorCard(
                       message: _controller.error!,
@@ -60,34 +70,24 @@ class LaundryHomeScreen extends StatelessWidget {
                   else if (_controller.scoreEnvelope == null)
                     const _LoadingState()
                   else ...[
-                    _ScoreCard(
-                      envelope: _controller.scoreEnvelope,
-                      loading: _controller.loading,
-                    ),
+                    _ScoreCard(controller: _controller),
                     const SizedBox(height: 12),
+                    _LaundryTypeSelector(controller: _controller),
+                    const SizedBox(height: 8),
+                    _DryingPlaceSelector(controller: _controller),
+                    const SizedBox(height: 14),
                     _WeatherSummaryCard(
                       weather: _controller.scoreEnvelope!.weather,
                     ),
-                    const SizedBox(height: 16),
-                    _RecommendedTimeCard(
-                      timeline: _controller.timeline,
-                      score: _controller.scoreEnvelope?.score,
-                    ),
                   ],
-                  const SizedBox(height: 16),
-                  _MapSection(controller: _controller),
-                  const SizedBox(height: 16),
-                  _LaundryTypeSelector(controller: _controller),
-                  const SizedBox(height: 16),
-                  _DryingPlaceSelector(controller: _controller),
-                  const SizedBox(height: 16),
-                  _AmountSelector(controller: _controller),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
                   if (_controller.timeline != null)
-                    _TimelineCard(timeline: _controller.timeline!),
-                  const SizedBox(height: 16),
-                  _LaundromatsSection(controller: _controller),
-                  const SizedBox(height: 24),
+                    _TimelineCard(
+                      timeline: _controller.timeline!,
+                      accent: _controller.currentAccentColor,
+                    ),
+                  const SizedBox(height: 14),
+                  _NearbySection(controller: _controller),
                 ],
               ),
             );
@@ -98,46 +98,126 @@ class LaundryHomeScreen extends StatelessWidget {
   }
 }
 
-class _AppHeader extends StatelessWidget {
-  const _AppHeader();
+class _TopBar extends StatelessWidget {
+  const _TopBar({
+    required this.controller,
+    required this.onMap,
+    required this.onSettings,
+  });
+
+  final LaundryHomeController controller;
+  final VoidCallback onMap;
+  final VoidCallback onSettings;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            color: const Color(0xFF3A7BD5),
-            borderRadius: BorderRadius.circular(11),
-          ),
-          child: const Icon(Icons.local_laundry_service,
-              color: Colors.white, size: 22),
-        ),
-        const SizedBox(width: 10),
-        const Text(
-          '빨래빨래',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-            color: Color(0xFF1A2230),
+        Icon(Icons.place, color: controller.currentAccentColor, size: 22),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            controller.region.displayName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF1A2230),
+            ),
           ),
         ),
-        const Spacer(),
-        Text(
-          _todayLabel(),
-          style: const TextStyle(fontSize: 13, color: Colors.black45),
+        _IconBtn(
+          tooltip: '현재 위치',
+          icon: controller.locating
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.my_location, size: 20),
+          onTap: controller.locating
+              ? null
+              : () => controller.useCurrentLocation(),
+        ),
+        _IconBtn(
+          tooltip: '지도',
+          icon: const Icon(Icons.map_outlined, size: 22),
+          onTap: onMap,
+        ),
+        _IconBtn(
+          tooltip: '설정',
+          icon: const Icon(Icons.settings_outlined, size: 22),
+          onTap: onSettings,
         ),
       ],
     );
   }
 }
 
-String _todayLabel() {
-  const week = ['월', '화', '수', '목', '금', '토', '일'];
-  final now = DateTime.now();
-  return '${now.month}월 ${now.day}일 (${week[now.weekday - 1]})';
+class _IconBtn extends StatelessWidget {
+  const _IconBtn({required this.icon, required this.onTap, this.tooltip});
+  final Widget icon;
+  final VoidCallback? onTap;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final btn = InkResponse(
+      onTap: onTap,
+      radius: 22,
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: IconTheme(
+          data: const IconThemeData(color: Color(0xFF4A5763)),
+          child: icon,
+        ),
+      ),
+    );
+    return tooltip != null ? Tooltip(message: tooltip!, child: btn) : btn;
+  }
+}
+
+/// "현재 위치를 못 가져왔어요. 기본 지역(서울) 기준 표시 중" 안내 배너.
+/// 사용자가 본인 위치 날씨로 오해하지 않게 하는 핵심 표시.
+class _FallbackRegionBanner extends StatelessWidget {
+  const _FallbackRegionBanner({required this.controller});
+  final LaundryHomeController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF6E5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFF0D9A8)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.location_off,
+              size: 18, color: Color(0xFFC98A00)),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text(
+              '현재 위치를 가져오지 못해 기본 지역(서울) 기준으로 표시 중입니다.',
+              style: TextStyle(fontSize: 12.5, color: Color(0xFF7A5A00)),
+            ),
+          ),
+          TextButton(
+            onPressed: controller.locating
+                ? null
+                : () => controller.useCurrentLocation(),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: const Size(0, 32),
+            ),
+            child: const Text('재시도'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _LocationNoticeBanner extends StatelessWidget {
@@ -299,11 +379,17 @@ class _WeatherSummaryCard extends StatelessWidget {
                     icon: Icons.air,
                     label: '바람',
                     value: '${weather.windSpeedMps.toStringAsFixed(1)}m/s'),
+                // PM10·PM2.5를 별도로 보여줘 둘 중 하나만 나쁠 때도 사용자가 인지할 수 있게 함.
                 _WeatherChip(
                     icon: Icons.blur_on,
-                    label: '미세먼지',
+                    label: 'PM10',
                     value: _pmLabel(weather.pm10Grade),
                     valueColor: _pmColor(weather.pm10Grade)),
+                _WeatherChip(
+                    icon: Icons.grain,
+                    label: 'PM2.5',
+                    value: _pmLabel(weather.pm25Grade),
+                    valueColor: _pmColor(weather.pm25Grade)),
               ],
             ),
           ),
@@ -373,194 +459,17 @@ Color _pmColor(int? grade) {
   }
 }
 
-class _RegionHeader extends StatelessWidget {
-  const _RegionHeader({required this.controller, required this.onSearch});
-  final LaundryHomeController controller;
-  final VoidCallback onSearch;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        const Icon(Icons.place, color: Color(0xFF3A7BD5)),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            controller.region.displayName,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-        ),
-        IconButton(
-          tooltip: controller.isCurrentFavorite ? '즐겨찾기 해제' : '즐겨찾기 추가',
-          onPressed: controller.toggleFavorite,
-          icon: Icon(
-            controller.isCurrentFavorite ? Icons.star : Icons.star_border,
-            color: const Color(0xFFE0A100),
-          ),
-        ),
-        IconButton(
-          tooltip: '현재 위치',
-          onPressed: controller.locating
-              ? null
-              : () => controller.useCurrentLocation(),
-          icon: controller.locating
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.my_location, color: Colors.black54),
-        ),
-        IconButton(
-          tooltip: '지역 검색',
-          onPressed: onSearch,
-          icon: const Icon(Icons.search, color: Colors.black54),
-        ),
-      ],
-    );
-  }
-}
-
-class _FavoritesBar extends StatelessWidget {
-  const _FavoritesBar({required this.controller});
+class _NearbySection extends StatelessWidget {
+  const _NearbySection({required this.controller});
   final LaundryHomeController controller;
 
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 38,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: controller.favorites.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final fav = controller.favorites[index];
-          final selected = fav.admCode == controller.region.admCode;
-          return InputChip(
-            label: Text('${fav.sigungu} ${fav.eupmyeondong}'),
-            selected: selected,
-            onPressed: () => controller.selectRegion(fav),
-            onDeleted: () => controller.removeFavorite(fav.admCode),
-            deleteIcon: const Icon(Icons.close, size: 16),
-          );
-        },
+  void _openFullscreen(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MapFullscreenScreen(controller: controller),
       ),
     );
   }
-}
-
-class _RecommendedTimeCard extends StatelessWidget {
-  const _RecommendedTimeCard({required this.timeline, required this.score});
-  final TimelineEnvelopeModel? timeline;
-  final LaundryScoreModel? score;
-
-  @override
-  Widget build(BuildContext context) {
-    final range = timeline?.bestStartTimeRange;
-    final hasRecommendation = range != null;
-    final color =
-        hasRecommendation ? const Color(0xFF1FA463) : const Color(0xFFE8743B);
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: hasRecommendation
-              ? [const Color(0xFF2FB36F), const Color(0xFF1FA463)]
-              : [const Color(0xFFF0954B), const Color(0xFFE8743B)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.3),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.schedule, color: Colors.white, size: 34),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '추천 빨래 시간',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  hasRecommendation ? range : '오늘은 빨래 추천이 어려워요',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 30,
-                    fontWeight: FontWeight.w800,
-                    height: 1.1,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  hasRecommendation
-                      ? '이 시간에 널면 가장 잘 말라요'
-                      : '실내 건조나 건조기를 추천해요',
-                  style: const TextStyle(color: Colors.white70, fontSize: 13),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MapSection extends StatelessWidget {
-  const _MapSection({required this.controller});
-  final LaundryHomeController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const Text('지도에서 위치 선택',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-            const SizedBox(width: 6),
-            const Text('지도를 탭하면 그 지역으로 바뀌어요',
-                style: TextStyle(fontSize: 12, color: Colors.black45)),
-          ],
-        ),
-        const SizedBox(height: 8),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: SizedBox(
-            height: 240,
-            child: KakaoMapView(
-              latitude: controller.lat,
-              longitude: controller.lng,
-              onTap: (lat, lng) => controller.selectByCoords(lat, lng),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _LaundromatsSection extends StatelessWidget {
-  const _LaundromatsSection({required this.controller});
-  final LaundryHomeController controller;
 
   Future<void> _open(String? url) async {
     if (url == null || url.isEmpty) return;
@@ -572,260 +481,570 @@ class _LaundromatsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final list = controller.laundromats;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('내 주변 빨래방',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+        Row(
+          children: [
+            Image.asset('assets/icons/256/laundry_room.png', width: 20, height: 20),
+            const SizedBox(width: 6),
+            const Text('내 주변 빨래방',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+            if (controller.laundromatsIsMock) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF3D6),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: const Color(0xFFE0B84A)),
+                ),
+                child: const Text(
+                  '예시',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Color(0xFF8C6A1F),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+            const Spacer(),
+            TextButton.icon(
+              onPressed: () => _openFullscreen(context),
+              icon: const Icon(Icons.fullscreen, size: 16),
+              label: const Text('지도 크게 보기'),
+              style: TextButton.styleFrom(
+                foregroundColor: controller.currentAccentColor,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: const Size(0, 32),
+                textStyle: const TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: 8),
-        if (list.isEmpty)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFE3EAF3)),
-            ),
-            child: Center(
-              child: controller.laundromatsLoading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('주변 빨래방 검색 결과가 없어요',
-                      style: TextStyle(color: Colors.black45, fontSize: 13)),
-            ),
-          )
-        else
-          SizedBox(
-            height: 112,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: list.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 10),
-              itemBuilder: (context, index) {
-                final m = list[index];
-                return InkWell(
-                  onTap: m.placeUrl != null ? () => _open(m.placeUrl) : null,
-                  borderRadius: BorderRadius.circular(14),
-                  child: Container(
-                    width: 184,
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFFE3EAF3)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.local_laundry_service,
-                                size: 18, color: Color(0xFF3A7BD5)),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                m.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                            if (m.placeUrl != null)
-                              const Icon(Icons.open_in_new,
-                                  size: 14, color: Colors.black26),
-                          ],
-                        ),
-                        Text(
-                          m.address,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              fontSize: 12, color: Colors.black54),
-                        ),
-                        Text(
-                          m.distanceMeters >= 1000
-                              ? '${(m.distanceMeters / 1000).toStringAsFixed(1)}km'
-                              : '${m.distanceMeters}m',
-                          style: const TextStyle(
-                            color: Color(0xFF3A7BD5),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
+        ClipRRect(
+          borderRadius: BorderRadius.circular(18),
+          child: SizedBox(
+            height: 180,
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: IgnorePointer(
+                    ignoring: true,
+                    child: KakaoMapView(
+                      latitude: controller.lat,
+                      longitude: controller.lng,
+                      onTap: (_, _) {},
                     ),
                   ),
-                );
-              },
+                ),
+                Positioned(
+                  right: 12,
+                  bottom: 12,
+                  child: GestureDetector(
+                    onTap: () => _openFullscreen(context),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x33000000),
+                            blurRadius: 8,
+                            offset: Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.fullscreen,
+                              size: 16, color: Color(0xFF1A2230)),
+                          SizedBox(width: 4),
+                          Text('지도보기',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF1A2230),
+                              )),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
+        ),
+        const SizedBox(height: 12),
+        if (controller.laundromatsIsMock)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(
+              '카카오 장소 검색을 사용할 수 없어 예시 데이터를 표시 중입니다.',
+              style: TextStyle(fontSize: 11, color: Colors.orange.shade800),
+            ),
+          ),
+        _LaundromatList(controller: controller, onOpen: _open),
       ],
     );
   }
 }
 
-class _ScoreCard extends StatelessWidget {
-  const _ScoreCard({required this.envelope, required this.loading});
-  final ScoreEnvelopeModel? envelope;
-  final bool loading;
+class _LaundromatList extends StatelessWidget {
+  const _LaundromatList({required this.controller, required this.onOpen});
+  final LaundryHomeController controller;
+  final Future<void> Function(String?) onOpen;
 
   @override
   Widget build(BuildContext context) {
-    if (envelope == null) {
-      return const Card(
-        child: SizedBox(
-          height: 200,
-          child: Center(child: CircularProgressIndicator()),
+    final list = controller.laundromats;
+    if (list.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFE3EAF3)),
+        ),
+        child: Center(
+          child: controller.laundromatsLoading
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('주변 빨래방 검색 결과가 없어요',
+                  style: TextStyle(color: Colors.black45, fontSize: 13)),
         ),
       );
     }
-
-    final score = envelope!.score;
-    final color = _gradeColor(score.grade);
-
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                Text(
-                  '${score.overallScore}',
-                  style: TextStyle(
-                    fontSize: 64,
-                    fontWeight: FontWeight.bold,
-                    color: color,
-                  ),
-                ),
-                const Text('점', style: TextStyle(fontSize: 24)),
-                if (loading) ...[
-                  const SizedBox(width: 12),
-                  const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ],
-              ],
-            ),
-            const SizedBox(height: 8),
-            Center(
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  _gradeLabel(score.grade),
-                  style: TextStyle(
-                    color: color,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
+    return SizedBox(
+      height: 112,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: list.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 10),
+        itemBuilder: (context, index) {
+          final m = list[index];
+          return InkWell(
+            onTap: m.placeUrl != null ? () => onOpen(m.placeUrl) : null,
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              width: 184,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE3EAF3)),
               ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              score.recommendationText,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 16),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _Metric(
-                  icon: Icons.timer_outlined,
-                  label: '예상 건조',
-                  value: _formatDryTime(
-                    score.estimatedDryHoursMin,
-                    score.estimatedDryHoursMax,
-                  ),
-                ),
-                _Metric(
-                  icon: Icons.wb_sunny_outlined,
-                  label: '실외/실내',
-                  value: '${score.outdoorScore}/${score.indoorScore}',
-                ),
-              ],
-            ),
-            if (score.warningTexts.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              ...score.warningTexts.map(
-                (w) => Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
                     children: [
-                      const Icon(Icons.warning_amber_rounded,
-                          size: 18, color: Colors.orange),
+                      Image.asset('assets/icons/256/laundry_room.png',
+                          width: 18, height: 18),
                       const SizedBox(width: 6),
                       Expanded(
-                        child: Text(w,
-                            style: const TextStyle(
-                                fontSize: 13, color: Colors.black87)),
+                        child: Text(
+                          m.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              const TextStyle(fontWeight: FontWeight.bold),
+                        ),
                       ),
+                      if (m.placeUrl != null)
+                        const Icon(Icons.open_in_new,
+                            size: 14, color: Colors.black26),
                     ],
                   ),
-                ),
-              ),
-            ],
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (envelope!.stale)
-                  const Padding(
-                    padding: EdgeInsets.only(right: 8),
-                    child: Text('업데이트 지연',
-                        style: TextStyle(color: Colors.orange, fontSize: 12)),
+                  Text(
+                    m.address,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 12, color: Colors.black54),
                   ),
-                Text(
-                  '기준: ${_fmtTime(envelope!.generatedAt)}',
-                  style: const TextStyle(color: Colors.black45, fontSize: 12),
-                ),
-              ],
+                  Text(
+                    m.distanceMeters >= 1000
+                        ? '${(m.distanceMeters / 1000).toStringAsFixed(1)}km'
+                        : '${m.distanceMeters}m',
+                    style: TextStyle(
+                      color: controller.currentAccentColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
 }
 
-class _Metric extends StatelessWidget {
-  const _Metric({required this.icon, required this.label, required this.value});
-  final IconData icon;
+/// 오늘 추천 시각 박스 시작 시각 + 45분(세탁) hangAt 으로 "HH:MM ~ HH:MM" 라벨 생성.
+/// 백엔드 timeline entry 에는 hangAt 이 없어 클라이언트에서 +45분 추정. 백엔드의
+/// `formatStartRange` 와 동일 식.
+String _formatTodayRecoRange(DateTime start) {
+  final hang = start.add(const Duration(minutes: 45));
+  String fmt(DateTime d) =>
+      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  return '${fmt(start)} ~ ${fmt(hang)}';
+}
+
+/// 점수 카드 내부의 라벨+값 한 줄 박스.
+/// 추천 시간 / 예상 건조 시간 공용. `tailLabel` 이 지정되면 우측 끝에 작은
+/// 보조 라벨이 표시됨 (예: "내일 추천").
+class _ScoreInfoRow extends StatelessWidget {
+  const _ScoreInfoRow({
+    required this.label,
+    required this.value,
+    required this.valueColor,
+    required this.bgColor,
+    this.tailLabel,
+  });
+
   final String label;
   final String value;
+  final Color valueColor;
+  final Color bgColor;
+  final String? tailLabel;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Colors.black54,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                color: valueColor,
+              ),
+            ),
+          ),
+          if (tailLabel != null) ...[
+            const SizedBox(width: 8),
+            Text(
+              tailLabel!,
+              style: TextStyle(
+                fontSize: 10,
+                color: valueColor.withValues(alpha: 0.8),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// 같은 날씨 조건에서 실외/실내 점수를 나란히 비교.
+/// 점수 카드의 큰 숫자(overallScore)는 사용자가 고른 건조 장소 기반이므로,
+/// 다른 장소를 골랐을 때 얼마나 달라지는지 한눈에 보이게 한다.
+class _IndoorOutdoorRow extends StatelessWidget {
+  const _IndoorOutdoorRow({
+    required this.outdoorScore,
+    required this.indoorScore,
+  });
+
+  final int outdoorScore;
+  final int indoorScore;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
       children: [
-        Icon(icon, color: const Color(0xFF3A7BD5)),
-        const SizedBox(height: 4),
-        Text(label, style: const TextStyle(fontSize: 12, color: Colors.black54)),
-        const SizedBox(height: 2),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
+        Expanded(
+          child: _CompareChip(
+            icon: Icons.wb_sunny_outlined,
+            label: '실외',
+            score: outdoorScore,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: _CompareChip(
+            icon: Icons.home_outlined,
+            label: '실내',
+            score: indoorScore,
+          ),
+        ),
       ],
+    );
+  }
+}
+
+class _CompareChip extends StatelessWidget {
+  const _CompareChip({
+    required this.icon,
+    required this.label,
+    required this.score,
+  });
+
+  final IconData icon;
+  final String label;
+  final int score;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _gradeColor(gradeFromScore(score));
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              color: Colors.black54,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '$score',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScoreCard extends StatelessWidget {
+  const _ScoreCard({required this.controller});
+  final LaundryHomeController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final envelope = controller.scoreEnvelope;
+    if (envelope == null) {
+      return const Card(
+        child: SizedBox(
+          height: 160,
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+
+    // 점수 카드는 오늘(현재 시각 ~ 오늘 자정) 안의 최적 후보 기준으로 표시.
+    // 오늘 후보가 없으면 envelope.score(글로벌 best) 로 폴백.
+    final todayBest = controller.todayBestEntry;
+    final loading = controller.loading;
+
+    final int overallScore =
+        todayBest?.overallScore ?? envelope.score.overallScore;
+    final String rawGrade = (todayBest?.grade.isNotEmpty ?? false)
+        ? todayBest!.grade
+        : envelope.score.grade;
+    final grade =
+        rawGrade.isNotEmpty ? rawGrade : gradeFromScore(overallScore);
+    if (kDebugMode) {
+      final recomputed = gradeFromScore(overallScore);
+      if (rawGrade.isNotEmpty && recomputed != rawGrade) {
+        debugPrint(
+            '[Ppallae] grade mismatch: server=$rawGrade flutter=$recomputed score=$overallScore');
+      }
+    }
+    final color = _gradeColor(grade);
+    final iconAsset = _gradeIconAsset(grade);
+
+    // 추천 시간 박스 라벨 = "오늘 HH:MM ~ HH:MM". 종료 시각은 시작 + 45분(세탁) hangAt 추정.
+    // todayBest 가 없으면 오늘은 추천 시간 자체가 없음.
+    final hasRecommendation = todayBest != null;
+    final String range = hasRecommendation
+        ? _formatTodayRecoRange(todayBest.forecastAt.toLocal())
+        : '오늘은 빨래 추천이 어려워요';
+    final double dryMin =
+        todayBest?.estimatedDryHoursMin ?? envelope.score.estimatedDryHoursMin;
+    final double dryMax =
+        todayBest?.estimatedDryHoursMax ?? envelope.score.estimatedDryHoursMax;
+    final showTomorrow = controller.shouldShowTomorrowHint;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: color.withValues(alpha: 0.25), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.10),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ── 상단: 큰 이모지 + 점수 + 등급 (한눈에) ──
+          Row(
+            children: [
+              Container(
+                width: 78,
+                height: 78,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                alignment: Alignment.center,
+                child: Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: Image.asset(iconAsset, fit: BoxFit.contain),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 보조 라벨: 큰 숫자가 "지금 점수"가 아니라
+                    // "30시간 안 최적 시점의 점수"임을 명시.
+                    Text(
+                      hasRecommendation
+                          ? '추천 시점 기준 점수'
+                          : '오늘 최고 기준 점수',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.black45,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Text(
+                          gradeLabel(grade),
+                          style: TextStyle(
+                            color: color,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            height: 1.0,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '$overallScore점',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Colors.black54,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if (loading) ...[
+                          const SizedBox(width: 8),
+                          const SizedBox(
+                            width: 12,
+                            height: 12,
+                            child:
+                                CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          // ── 추천 빨래 시간 ──
+          // 오늘(현재 ~ 자정) 최적 시각. todayBest 없으면 "추천 어려움".
+          // 오늘 점수가 60 미만이면 우측에 작은 "내일 추천" 라벨 표시.
+          const SizedBox(height: 14),
+          _ScoreInfoRow(
+            label: '추천 시간',
+            value: range,
+            valueColor: color,
+            bgColor: color.withValues(alpha: 0.08),
+            tailLabel: showTomorrow ? '내일 추천' : null,
+          ),
+          // ── 예상 건조 시간 ──
+          const SizedBox(height: 8),
+          _ScoreInfoRow(
+            label: '예상 건조 시간',
+            value: _formatDryTime(dryMin, dryMax),
+            valueColor: color,
+            bgColor: color.withValues(alpha: 0.08),
+          ),
+          // ── 실외 vs 실내 점수 비교 (오늘 기준 — outdoor/indoor 각각 별도 timeline 호출) ──
+          const SizedBox(height: 8),
+          _IndoorOutdoorRow(
+            outdoorScore: controller.todayBestOutdoor?.overallScore ??
+                envelope.score.outdoorScore,
+            indoorScore: controller.todayBestIndoor?.overallScore ??
+                envelope.score.indoorScore,
+          ),
+          if (envelope.score.warningTexts.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            ...envelope.score.warningTexts.map(
+              (w) => Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('⚠️', style: TextStyle(fontSize: 12)),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        w,
+                        style: const TextStyle(
+                            fontSize: 12, color: Colors.black87),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -837,6 +1056,10 @@ class _LaundryTypeSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final types = controller.laundryTypes;
+    // 백엔드에서 받은 타입 메타데이터. cautionText/예시/설명을 long-press 시
+    // 보여주기 위해 모델 참조를 유지한다.
+    final byCode = {for (final t in types) t.code: t};
+
     final fallback = [
       ('LIGHT', '얇음'),
       ('MEDIUM', '중간'),
@@ -848,38 +1071,146 @@ class _LaundryTypeSelector extends StatelessWidget {
 
     return _SelectorSection(
       title: '빨래 종류',
-      child: Wrap(
-        spacing: 8,
+      child: Row(
         children: items.map((item) {
           final selected = controller.laundryTypeCode == item.$1;
-          return ChoiceChip(
-            label: Text(item.$2),
-            selected: selected,
-            onSelected: (_) => controller.selectLaundryType(item.$1),
+          final meta = byCode[item.$1];
+          return Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: GestureDetector(
+                onLongPress: meta == null
+                    ? null
+                    : () => _showLaundryTypeSheet(context, meta),
+                child: _PpallaePill(
+                  iconAsset: _laundryIconByCode[item.$1] ??
+                      'assets/icons/256/laundry_room.png',
+                  label: item.$2,
+                  selected: selected,
+                  accent: controller.currentAccentColor,
+                  accentLight: controller.currentAccentColorLight,
+                  onTap: () => controller.selectLaundryType(item.$1),
+                ),
+              ),
+            ),
           );
         }).toList(),
       ),
     );
   }
+
+  void _showLaundryTypeSheet(BuildContext context, LaundryTypeModel meta) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Image.asset(
+                  _laundryIconByCode[meta.code] ??
+                      'assets/icons/256/laundry_room.png',
+                  width: 28,
+                  height: 28,
+                ),
+                const SizedBox(width: 8),
+                Text(meta.nameKo,
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(meta.description,
+                style: const TextStyle(fontSize: 13, color: Colors.black87)),
+            if (meta.examples.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text('예시: ${meta.examples.join(", ")}',
+                  style: const TextStyle(fontSize: 12, color: Colors.black54)),
+            ],
+            const SizedBox(height: 10),
+            Text(
+              '예상 건조 시간 ${meta.baseDryHoursMin.toStringAsFixed(0)}~'
+              '${meta.baseDryHoursMax.toStringAsFixed(0)}시간 (날씨 조건에 따라 달라짐)',
+              style: const TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+            if (meta.cautionText.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF7E5),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFE0B84A)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.warning_amber_rounded,
+                        size: 16, color: Color(0xFF8C6A1F)),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        meta.cautionText,
+                        style: const TextStyle(
+                            fontSize: 12, color: Color(0xFF8C6A1F)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }
+
+const Map<String, String> _laundryIconByCode = {
+  'LIGHT': 'assets/icons/256/laundry_light.png',
+  'MEDIUM': 'assets/icons/256/laundry_medium.png',
+  'HEAVY': 'assets/icons/256/laundry_heavy.png',
+};
 
 class _DryingPlaceSelector extends StatelessWidget {
   const _DryingPlaceSelector({required this.controller});
   final LaundryHomeController controller;
 
+  // 실외 → 실내 → 베란다 순 (DryingPlace enum 선언 순서와 동일).
+  // 자연 건조만 노출 (제습기/건조기 제외).
+  static const Map<DryingPlace, String> _icons = {
+    DryingPlace.outdoor: 'assets/icons/256/drying_outdoor.png',
+    DryingPlace.indoor: 'assets/icons/256/drying_indoor.png',
+    DryingPlace.balcony: 'assets/icons/256/drying_balcony.png',
+  };
+
   @override
   Widget build(BuildContext context) {
     return _SelectorSection(
       title: '건조 장소',
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 4,
+      child: Row(
         children: DryingPlace.values.map((place) {
           final selected = controller.dryingPlace == place;
-          return ChoiceChip(
-            label: Text(place.label),
-            selected: selected,
-            onSelected: (_) => controller.selectDryingPlace(place),
+          return Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: _PpallaePill(
+                iconAsset: _icons[place] ??
+                    'assets/icons/256/laundry_room.png',
+                label: place.label,
+                selected: selected,
+                accent: controller.currentAccentColor,
+                accentLight: controller.currentAccentColorLight,
+                onTap: () => controller.selectDryingPlace(place),
+              ),
+            ),
           );
         }).toList(),
       ),
@@ -887,25 +1218,73 @@ class _DryingPlaceSelector extends StatelessWidget {
   }
 }
 
-class _AmountSelector extends StatelessWidget {
-  const _AmountSelector({required this.controller});
-  final LaundryHomeController controller;
+/// 빨래빨래 전용 셀렉터 필. 좌측 아이콘 PNG + 우측 라벨, 선택 시 등급 색 그라데이션.
+/// 액센트 색은 호출자(=controller 의 currentAccentColor)에서 주입.
+class _PpallaePill extends StatelessWidget {
+  const _PpallaePill({
+    required this.iconAsset,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    required this.accent,
+    required this.accentLight,
+  });
+
+  final String iconAsset;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final Color accent;
+  final Color accentLight;
 
   @override
   Widget build(BuildContext context) {
-    return _SelectorSection(
-      title: '빨래 양',
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 4,
-        children: LaundryAmount.values.map((amount) {
-          final selected = controller.laundryAmount == amount;
-          return ChoiceChip(
-            label: Text(amount.label),
-            selected: selected,
-            onSelected: (_) => controller.selectAmount(amount),
-          );
-        }).toList(),
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding:
+            const EdgeInsets.symmetric(vertical: 7, horizontal: 4),
+        decoration: BoxDecoration(
+          gradient: selected
+              ? LinearGradient(
+                  colors: [accentLight, accent],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : null,
+          color: selected ? null : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? accent : const Color(0xFFE3EAF3),
+            width: 1.2,
+          ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: accent.withValues(alpha: 0.2),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Image.asset(iconAsset, width: 20, height: 20),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: selected ? Colors.white : const Color(0xFF1A2230),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -921,10 +1300,14 @@ class _SelectorSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title,
-            style:
-                const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 4),
+          child: Text(title,
+              style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12.5,
+                  color: Colors.black54)),
+        ),
         child,
       ],
     );
@@ -932,7 +1315,8 @@ class _SelectorSection extends StatelessWidget {
 }
 
 class _TimelineCard extends StatelessWidget {
-  const _TimelineCard({required this.timeline});
+  const _TimelineCard({required this.timeline, required this.accent});
+  final Color accent;
   final TimelineEnvelopeModel timeline;
 
   @override
@@ -945,17 +1329,17 @@ class _TimelineCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Row(
+            Row(
               children: [
-                Icon(Icons.schedule, size: 18, color: Color(0xFF3A7BD5)),
-                SizedBox(width: 6),
-                Text('시간별 예보',
+                Icon(Icons.schedule, size: 18, color: accent),
+                const SizedBox(width: 6),
+                const Text('시간별 예보',
                     style: TextStyle(fontWeight: FontWeight.bold)),
               ],
             ),
             const SizedBox(height: 12),
             SizedBox(
-              height: 150,
+              height: 168,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: entries.length,
@@ -978,10 +1362,24 @@ class _HourCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = _gradeColor(entry.grade);
+    // 백엔드 grade 우선. 빈 값일 때만 점수 기반 fallback.
+    final grade = entry.grade.isNotEmpty
+        ? entry.grade
+        : gradeFromScore(entry.overallScore);
+    final color = _gradeColor(grade);
+    // 백엔드 displayTime 은 추천 후보의 시작 시각(5분 ceiling 결과)이라 ":15", ":30"
+    // 같은 분이 섞인다. 사용자 직관을 위해 모바일에서 정시로 강제 표기.
+    // 실제 후보 시각과 살짝 다를 수 있으나 시간별 예보의 가독성을 우선.
+    final timeLabel = _formatTimelineHour(entry.forecastAt);
+    // 백엔드가 시간대별 예상 건조 시간도 같이 보내준다. 표시해서
+    // "이 시점에 널면 N시간" 정보를 사용자에게 제공.
+    final dryRange = _formatTimelineDry(
+      entry.estimatedDryHoursMin,
+      entry.estimatedDryHoursMax,
+    );
     return Container(
-      width: 78,
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      width: 82,
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
       decoration: BoxDecoration(
         color: const Color(0xFFF7FAFE),
         borderRadius: BorderRadius.circular(14),
@@ -990,14 +1388,14 @@ class _HourCard extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text('${entry.hourOfDay}시',
+          Text(timeLabel,
               style: const TextStyle(fontSize: 12, color: Colors.black54)),
           Icon(_weatherIcon(entry.precipType, entry.skyCondition),
               color: _weatherColor(entry.precipType, entry.skyCondition),
-              size: 26),
+              size: 24),
           Text('${entry.temperatureC.round()}°',
               style: const TextStyle(
-                  fontSize: 14, fontWeight: FontWeight.bold)),
+                  fontSize: 13, fontWeight: FontWeight.bold)),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
@@ -1008,10 +1406,31 @@ class _HourCard extends StatelessWidget {
                 style: TextStyle(
                     color: color, fontWeight: FontWeight.bold, fontSize: 13)),
           ),
+          if (dryRange != null)
+            Text(
+              dryRange,
+              style: const TextStyle(fontSize: 10, color: Colors.black45),
+            ),
         ],
       ),
     );
   }
+}
+
+/// 0~24h 범위의 건조시간 간단 라벨. 값이 0이거나 비현실적이면 숨김.
+String? _formatTimelineDry(double min, double max) {
+  if (min <= 0 && max <= 0) return null;
+  if (max >= 24) return '24h+';
+  if ((max - min).abs() < 0.1) return '~${max.toStringAsFixed(0)}h';
+  return '${min.toStringAsFixed(0)}~${max.toStringAsFixed(0)}h';
+}
+
+/// 시간별 카드 라벨용 — 분 정보 무시하고 정시(HH시)로 표기.
+/// 백엔드 후보가 :15, :30 등 5분 ceiling 시각이라도 사용자에겐 정시로 보임.
+String _formatTimelineHour(DateTime dateTime) {
+  final local = dateTime.toLocal();
+  final hour = local.hour.toString().padLeft(2, '0');
+  return '$hour시';
 }
 
 IconData _weatherIcon(String precip, String sky) {
@@ -1067,37 +1486,39 @@ class _ErrorCard extends StatelessWidget {
 
 Color _gradeColor(String grade) {
   switch (grade) {
+    // 파스텔 톤 — 신호등 스케일 (파랑→초록→노랑→주황→빨강)
     case 'EXCELLENT':
-      return const Color(0xFF1FA463);
+      return const Color(0xFF5BA3D3); // 파스텔 스카이블루
     case 'GOOD':
-      return const Color(0xFF3A7BD5);
+      return const Color(0xFF5DAB6C); // 세이지 그린
     case 'NORMAL':
-      return const Color(0xFFE0A100);
+      return const Color(0xFFE5B946); // 머스타드 옐로우
     case 'BAD':
-      return const Color(0xFFE8743B);
+      return const Color(0xFFE89464); // 소프트 오렌지
     case 'VERY_BAD':
-      return const Color(0xFFD23B3B);
+      return const Color(0xFFD17878); // 로지 레드
     default:
       return Colors.grey;
   }
 }
 
-String _gradeLabel(String grade) {
+String _gradeIconAsset(String grade) {
   switch (grade) {
     case 'EXCELLENT':
-      return '최고';
+      return 'assets/icons/256/grade_excellent.png';
     case 'GOOD':
-      return '좋음';
+      return 'assets/icons/256/grade_good.png';
     case 'NORMAL':
-      return '보통';
+      return 'assets/icons/256/grade_normal.png';
     case 'BAD':
-      return '나쁨';
+      return 'assets/icons/256/grade_bad.png';
     case 'VERY_BAD':
-      return '매우 나쁨';
+      return 'assets/icons/256/grade_very_bad.png';
     default:
-      return grade;
+      return 'assets/icons/256/grade_normal.png';
   }
 }
+
 
 String _fmt(double h) {
   if (h == h.roundToDouble()) return h.toInt().toString();
@@ -1110,11 +1531,4 @@ String _formatDryTime(double min, double max) {
   final lo = _fmt(min);
   final hi = _fmt(max);
   return lo == hi ? '약 $lo시간' : '$lo~$hi시간';
-}
-
-String _fmtTime(DateTime dt) {
-  final local = dt.toLocal();
-  final hh = local.hour.toString().padLeft(2, '0');
-  final mm = local.minute.toString().padLeft(2, '0');
-  return '$hh:$mm';
 }
