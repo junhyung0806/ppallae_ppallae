@@ -48,9 +48,10 @@
 - [x] RELEASE_CHECKLIST.md (이 문서) 신규
 - [x] 모바일 전용 README.md 교체 (현재 모노레포 안내)
 - [x] `flutter analyze` 클린 유지 (현 상태 No issues)
-- [ ] `flutter test` 통과 확인 (현재 `test/` 비어있음 — 최소한 smoke test 1개 추가 필요)
+- [x] `flutter test` 통과 확인 (`test/smoke_test.dart` 추가 — gradeFromScore 경계값 + API baseUrl 주입 가드, 4/4 통과)
 - [x] `flutter build apk --release` sanity (49.0MB, 디버그 서명, 136s)
 - [x] `flutter build web --release` sanity (36MB, 50.8s, 폰트 tree-shake 99%)
+- [x] 운영 빌드 스크립트 `scripts/build_release.ps1` (API URL 강제 주입 — https·`/api/v1`·localhost 차단). 사용: `./scripts/build_release.ps1 -ApiBaseUrl https://<운영도메인>/api/v1 [-Target appbundle]`
 
 ### 2.2 코드 정리
 - [ ] `lib/` 미사용 import / dead 코드 audit
