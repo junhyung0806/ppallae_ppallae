@@ -11,14 +11,19 @@ import '../../api/models/api_models.dart';
 import '../../api/ppallae_api_client.dart';
 import '../../core/error_codes.dart';
 import 'grade_utils.dart';
+import 'laundry_prefs.dart';
+import 'timeline_best.dart';
 import 'widget_service.dart';
+
+// kFixedLaundryAmount 는 laundry_prefs.dart 로 이동 — 기존 import 경로 호환 유지.
+export 'laundry_prefs.dart' show kFixedLaundryAmount;
 
 /// 사용자가 선택할 수 있는 건조 장소.
 /// 표시 순서대로 정의 — UI 셀렉터는 이 순서를 그대로 사용한다.
 ///
-/// 백엔드 enum 에는 INDOOR_DEHUMIDIFIER / DRYER 도 있지만, 제품 결정으로
-/// 모바일에서는 자연 건조 3종(실외/베란다/실내)만 노출한다. 제습기/건조기는
-/// 사용자 직관과 안 맞아 점수 계산 의미가 흐려진다고 판단.
+/// 제품 결정으로 자연 건조 3종(실외/베란다/실내)만 지원한다. 제습기/건조기는
+/// 사용자 직관과 안 맞아 점수 계산 의미가 흐려진다고 판단 — 백엔드 enum 에서도
+/// 제거됨(2026-07-04)이라 앱·서버가 완전히 1:1 이다.
 /// 표시 순서: 실외 → 실내 → 베란다. UI 셀렉터는 `DryingPlace.values` 를
 /// 그대로 사용하므로 이 enum 의 선언 순서가 곧 사용자가 보는 순서다.
 enum DryingPlace {
@@ -31,20 +36,16 @@ enum DryingPlace {
   final String label;
 }
 
-/// 백엔드 score API 에 전송하는 laundryAmount 고정값.
-/// 제품 결정으로 사용자 선택 UI는 두지 않고 항상 보통(MEDIUM) 기준으로 계산.
-/// 즉 점수 카드는 "보통량 빨래를 가정한 점수" 를 보여준다.
-const String kFixedLaundryAmount = 'MEDIUM';
-
-const _widgetEnabledKey = 'ppallae_widget_enabled';
-const _laundryTypeCodeKey = 'ppallae_laundry_type_code';
-const _dryingPlaceKey = 'ppallae_drying_place';
 
 class LaundryHomeController extends ChangeNotifier {
   LaundryHomeController({PpallaeApiClient? apiClient})
       : _api = apiClient ?? PpallaeApiClient();
 
   final PpallaeApiClient _api;
+
+  /// 위치 권한 시스템 팝업 전 "왜 필요한지" 사전 설명 콜백 (UI가 주입).
+  /// true 반환 시 권한 요청 진행, false면 기본지역으로 폴백. null이면 바로 요청.
+  Future<bool> Function()? requestLocationRationale;
 
   // 기본 지역: 서울 시청 부근 (GPS 실패 시 폴백)
   RegionModel _region = const RegionModel(
@@ -84,6 +85,21 @@ class LaundryHomeController extends ChangeNotifier {
   String? _error;
   String? _locationNotice;
 
+  /// 마지막으로 점수/타임라인을 성공적으로 갱신한 시각.
+  /// 백그라운드 복귀 시 [isDataStale] 로 자동 새로고침 여부를 판단한다.
+  DateTime? _lastRefreshedAt;
+
+  // ── 30분 점수 캐시 ──
+  // 사용자가 빨래종류/건조장소를 이리저리 눌러도 매번 API 를 부르지 않도록
+  // (지역×종류×장소) 조합별로 응답 묶음을 30분간 메모리에 보관한다.
+  // 목적: ① 셀렉터 연타 → 429/멈춤 방지 ② 즉각 반응(캐시 히트 시 0ms).
+  // 당겨서 새로고침(force)과 30분 경과 시에만 실제 API 를 호출한다.
+  final Map<String, _ScoreBundle> _scoreCache = {};
+  static const Duration _scoreCacheTtl = Duration(minutes: 30);
+
+  String get _scoreCacheKey =>
+      '${_region.admCode}|$_laundryTypeCode|${_dryingPlace.code}';
+
   // ── 위치 해석 상태 ──
   /// 현재 _region이 GPS/지도/검색으로 확정된 게 아니라 앱 기본값(서울 시청)인지.
   /// initialize 진입 시 true, 한 번이라도 GPS/검색/지도로 region 잡히면 false.
@@ -108,6 +124,14 @@ class LaundryHomeController extends ChangeNotifier {
   bool get isUsingFallbackRegion => _isUsingFallbackRegion;
   AppConfigModel? get appConfig => _appConfig;
 
+  /// 마지막 갱신이 [threshold](기본 30분)보다 오래됐으면 true.
+  /// 한 번도 갱신 안 됐어도 true (초기 로드 유도). 백그라운드 복귀 새로고침 판단용.
+  bool isDataStale({Duration threshold = const Duration(minutes: 30)}) {
+    final last = _lastRefreshedAt;
+    if (last == null) return true;
+    return DateTime.now().difference(last) > threshold;
+  }
+
   // ── 추천 시간: 오늘 기준 (현재 시각 ~ 오늘 KST 자정) ──
   //
   // 점수 카드의 큰 숫자/등급/건조시간/추천 시간 박스는 모두 timeline 의 오늘
@@ -117,46 +141,51 @@ class LaundryHomeController extends ChangeNotifier {
   // 오늘 후보가 0개 (=자정 직전 등) 거나 오늘 최대 점수가 60 미만이면
   // [shouldShowTomorrowHint] 가 true 가 되어 박스 옆에 "내일 추천" 라벨 표시.
 
-  TimelineEntryModel? _todayBestOf(TimelineEnvelopeModel? env) {
-    if (env == null) return null;
-    final now = DateTime.now();
-    // KST 자정 = 로컬 자정 (Android 폰이 KST 일 때).
-    final tomorrowMidnight =
-        DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
-    TimelineEntryModel? best;
-    for (final e in env.timeline) {
-      final local = e.forecastAt.toLocal();
-      if (local.isBefore(now)) continue;
-      if (!local.isBefore(tomorrowMidnight)) continue;
-      if (best == null || e.overallScore > best.overallScore) best = e;
-    }
-    return best;
-  }
+  // todayBestOf 로직은 위젯 백그라운드 워커와 공유 — timeline_best.dart 참고.
 
   /// 사용자 선택 dryingPlace 기준 오늘 최적 후보. 카드 큰 숫자/추천 박스의 원천.
-  TimelineEntryModel? get todayBestEntry => _todayBestOf(_timeline);
+  TimelineEntryModel? get todayBestEntry => todayBestOf(_timeline);
 
   /// 실외 기준 오늘 최적 후보. 비교 칩 OUTDOOR 점수 원천.
-  TimelineEntryModel? get todayBestOutdoor => _todayBestOf(_outdoorTimeline);
+  TimelineEntryModel? get todayBestOutdoor => todayBestOf(_outdoorTimeline);
 
   /// 실내 기준 오늘 최적 후보. 비교 칩 INDOOR 점수 원천.
-  TimelineEntryModel? get todayBestIndoor => _todayBestOf(_indoorTimeline);
+  TimelineEntryModel? get todayBestIndoor => todayBestOf(_indoorTimeline);
 
   /// 오늘 최적 점수가 60 미만이거나 오늘 후보 자체가 없으면 true.
   /// 박스 옆에 "내일 추천" 작은 라벨을 표시할지 결정.
-  bool get shouldShowTomorrowHint {
-    final best = todayBestEntry;
-    return best == null || best.overallScore < 60;
-  }
+  bool get shouldShowTomorrowHint => shouldShowTomorrowHintFor(todayBestEntry);
+
+  // ── 헤드라인(큰 숫자/위젯) 후보 ──
+  // 오늘이 빨래할 만하면(≥NORMAL) 오늘, 아니면 다음 좋은 시간대(내일 아침 등)로 롤오버.
+  // 밤/악천후에 "0점·최악"만 뜨는 문제를 막는다. featured_* 는 홈·위젯 공통 소스.
+
+  /// 헤드라인에 표시할 최적 후보 (오늘 또는 롤오버된 다음날).
+  TimelineEntryModel? get featuredEntry => featuredEntryOf(_timeline);
+
+  /// featured 가 며칠 뒤인지 (0=오늘, 1=내일, 2=모레…).
+  int get featuredDayOffset => featuredDayOffsetOf(featuredEntry);
+
+  /// featured 시점 기준 실외 비교 점수. featured 가 오늘이면 오늘 실외 최고,
+  /// 아니면 다음 좋은 실외 시간대.
+  TimelineEntryModel? get featuredOutdoor => featuredDayOffset == 0
+      ? todayBestOutdoor
+      : bestUpcomingOf(_outdoorTimeline);
+
+  /// featured 시점 기준 실내 비교 점수.
+  TimelineEntryModel? get featuredIndoor => featuredDayOffset == 0
+      ? todayBestIndoor
+      : bestUpcomingOf(_indoorTimeline);
 
   /// 현재 점수의 등급 코드.
-  /// 점수 카드 큰 숫자가 [todayBestEntry] 기반이므로 액센트 색도 같은 기준.
+  /// 점수 카드 큰 숫자가 [featuredEntry] 기반이므로 액센트 색도 같은 기준
+  /// (밤엔 오늘 0점이 아니라 롤오버된 내일 점수 색을 따라감 → 카드와 색 일치).
   /// timeline 데이터가 아직 없을 때만 score API 로 폴백.
   String get currentGradeCode {
-    final today = todayBestEntry;
-    if (today != null) {
-      if (today.grade.isNotEmpty) return today.grade;
-      return gradeFromScore(today.overallScore);
+    final f = featuredEntry;
+    if (f != null) {
+      if (f.grade.isNotEmpty) return f.grade;
+      return gradeFromScore(f.overallScore);
     }
     final env = _scoreEnvelope;
     if (env == null) return '';
@@ -192,11 +221,17 @@ class LaundryHomeController extends ChangeNotifier {
     // 실패해도 앱은 계속 진행 — _appConfig 가 null 인 경우 화면들이 로컬 폴백 사용.
     try {
       _appConfig = await _api.appConfig();
-    } catch (_) {}
+    } catch (e) {
+      PpallaeError(ErrorCodes.cfgAppConfig, '앱 설정을 불러오지 못했어요.', e.toString())
+          .log();
+    }
     try {
       _laundryTypes = await _api.laundryTypes();
-    } catch (_) {
-      // 빨래 종류 로드 실패해도 점수 조회는 시도
+    } catch (e) {
+      // 빨래 종류 로드 실패해도 점수 조회는 시도 (UI는 로컬 폴백 라벨 사용)
+      PpallaeError(ErrorCodes.cfgLaundryTypes, '빨래 종류 목록을 불러오지 못했어요.',
+              e.toString())
+          .log();
     }
     // 앱 시작 시 현재 위치 자동 시도 (실패하면 기본 지역으로)
     await useCurrentLocation(silent: true);
@@ -208,9 +243,9 @@ class LaundryHomeController extends ChangeNotifier {
   Future<void> _loadSelectorPrefs() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final type = prefs.getString(_laundryTypeCodeKey);
+      final type = prefs.getString(kLaundryTypeCodeKey);
       if (type != null && type.isNotEmpty) _laundryTypeCode = type;
-      final placeCode = prefs.getString(_dryingPlaceKey);
+      final placeCode = prefs.getString(kDryingPlaceKey);
       if (placeCode != null) {
         for (final p in DryingPlace.values) {
           if (p.code == placeCode) {
@@ -219,14 +254,19 @@ class LaundryHomeController extends ChangeNotifier {
           }
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      PpallaeError(ErrorCodes.prfRead, '저장된 설정을 읽지 못했어요.', e.toString()).log();
+    }
   }
 
   Future<void> _persistSelectorPref(String key, String value) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(key, value);
-    } catch (_) {}
+    } catch (e) {
+      PpallaeError(ErrorCodes.prfWrite, '설정을 저장하지 못했어요 ($key).', e.toString())
+          .log();
+    }
   }
 
   /// GPS로 현재 위치 → 지역 변환. silent면 권한 거부 등 조용히 폴백.
@@ -259,6 +299,18 @@ class LaundryHomeController extends ChangeNotifier {
     // 2) 권한
     LocationPermission perm = await Geolocator.checkPermission();
     if (perm == LocationPermission.denied) {
+      // 시스템 권한 팝업 전에 "왜 위치가 필요한지" 사전 설명 (UI가 콜백 제공).
+      // 사용자가 설명에서 거절하면 시스템 팝업을 띄우지 않고 기본지역으로 진행.
+      final rationale = requestLocationRationale;
+      if (rationale != null) {
+        final proceed = await rationale();
+        if (!proceed) {
+          return const PpallaeError(
+            ErrorCodes.locPermissionDenied,
+            '위치 권한 없이 기본 지역으로 표시해요. 설정에서 언제든 허용할 수 있어요.',
+          );
+        }
+      }
       perm = await Geolocator.requestPermission();
     }
     if (perm == LocationPermission.deniedForever) {
@@ -288,9 +340,13 @@ class LaundryHomeController extends ChangeNotifier {
         best = second;
       }
     }
-    // 그래도 fix가 없으면 high → medium → lastKnown 폴백
+    // 그래도 fix가 없으면 high → medium → 네트워크(low) → lastKnown 폴백.
     best ??= await _tryGetPosition(LocationAccuracy.high, 8);
     best ??= await _tryGetPosition(LocationAccuracy.medium, 10);
+    // 실내 GPS 실패 대비: 저정밀(네트워크/Wi-Fi/기지국) 위치는 실내에서도 잡힌다.
+    // 정확도는 낮지만(수백m~수km) 행정동 단위 날씨엔 충분. GPS로 못 잡던
+    // 사용자를 기본지역 대신 실제 근처 지역으로 잡아준다.
+    best ??= await _tryGetPosition(LocationAccuracy.low, 8);
     if (best == null) {
       final last = await Geolocator.getLastKnownPosition();
       if (last == null || _isStaleLastKnownPosition(last)) {
@@ -331,6 +387,8 @@ class LaundryHomeController extends ChangeNotifier {
     try {
       _region = await _api.currentRegion(_lat, _lng);
       _isUsingFallbackRegion = false;
+      // 위젯 백그라운드 워커가 같은 지역으로 점수를 재조회할 수 있게 저장.
+      await _persistSelectorPref(kRegionCodeKey, _region.admCode);
     } catch (e) {
       return PpallaeError(
         ErrorCodes.locRegionLookup,
@@ -370,6 +428,7 @@ class LaundryHomeController extends ChangeNotifier {
     try {
       _region = await _api.currentRegion(lat, lng);
       _isUsingFallbackRegion = false;
+      await _persistSelectorPref(kRegionCodeKey, _region.admCode);
     } catch (e) {
       final err = PpallaeError(
         ErrorCodes.locRegionLookup,
@@ -388,6 +447,7 @@ class LaundryHomeController extends ChangeNotifier {
     _lat = representative.lat;
     _lng = representative.lng;
     _isUsingFallbackRegion = false;
+    await _persistSelectorPref(kRegionCodeKey, region.admCode);
     _locationNotice =
         '검색한 지역의 대표 좌표 기준으로 지도와 주변 빨래방을 표시합니다.';
     _laundromats = [];
@@ -398,14 +458,14 @@ class LaundryHomeController extends ChangeNotifier {
   Future<void> selectLaundryType(String code) async {
     if (_laundryTypeCode == code) return;
     _laundryTypeCode = code;
-    await _persistSelectorPref(_laundryTypeCodeKey, code);
+    await _persistSelectorPref(kLaundryTypeCodeKey, code);
     await refresh();
   }
 
   Future<void> selectDryingPlace(DryingPlace place) async {
     if (_dryingPlace == place) return;
     _dryingPlace = place;
-    await _persistSelectorPref(_dryingPlaceKey, place.code);
+    await _persistSelectorPref(kDryingPlaceKey, place.code);
     await refresh();
   }
 
@@ -416,8 +476,11 @@ class LaundryHomeController extends ChangeNotifier {
     _widgetEnabled = enabled;
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(_widgetEnabledKey, enabled);
-    } catch (_) {}
+      await prefs.setBool(kWidgetEnabledKey, enabled);
+    } catch (e) {
+      PpallaeError(ErrorCodes.prfWrite, '위젯 설정을 저장하지 못했어요.', e.toString())
+          .log();
+    }
     notifyListeners();
     if (enabled) {
       // 다시 켜면 현재 데이터로 즉시 갱신 — 오늘 기준 best 사용.
@@ -425,8 +488,8 @@ class LaundryHomeController extends ChangeNotifier {
       if (score != null) {
         await WidgetService.update(
           envelope: score,
-          todayBest: todayBestEntry,
-          showTomorrowHint: shouldShowTomorrowHint,
+          featured: featuredEntry,
+          dayOffset: featuredDayOffset,
         );
       }
     } else {
@@ -437,11 +500,36 @@ class LaundryHomeController extends ChangeNotifier {
   Future<void> _loadWidgetEnabled() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      _widgetEnabled = prefs.getBool(_widgetEnabledKey) ?? true;
-    } catch (_) {}
+      _widgetEnabled = prefs.getBool(kWidgetEnabledKey) ?? true;
+    } catch (e) {
+      PpallaeError(ErrorCodes.prfRead, '위젯 설정을 읽지 못했어요.', e.toString()).log();
+    }
   }
 
-  Future<void> refresh() async {
+  /// 점수/타임라인 갱신.
+  ///
+  /// [force]=false(기본): (지역×종류×장소) 조합의 30분 캐시가 있으면 API 호출
+  /// 없이 즉시 반영 — 셀렉터 연타에도 요청이 안 나가 429/멈춤이 없다.
+  /// [force]=true: 당겨서 새로고침 등 사용자가 명시적으로 최신을 원할 때.
+  Future<void> refresh({bool force = false}) async {
+    final key = _scoreCacheKey;
+
+    // 캐시 히트: API 없이 즉시 반영. 빨래방은 위치가 안 바뀌었으므로 그대로 둔다.
+    if (!force) {
+      final cached = _scoreCache[key];
+      if (cached != null &&
+          DateTime.now().difference(cached.fetchedAt) < _scoreCacheTtl) {
+        _scoreEnvelope = cached.score;
+        _timeline = cached.timeline;
+        _outdoorTimeline = cached.outdoor;
+        _indoorTimeline = cached.indoor;
+        _lastRefreshedAt = cached.fetchedAt;
+        _error = null;
+        notifyListeners();
+        return;
+      }
+    }
+
     _loading = true;
     _error = null;
     notifyListeners();
@@ -481,11 +569,23 @@ class LaundryHomeController extends ChangeNotifier {
       _timeline = results[1] as TimelineEnvelopeModel;
       _outdoorTimeline = results[2] as TimelineEnvelopeModel;
       _indoorTimeline = results[3] as TimelineEnvelopeModel;
+      _lastRefreshedAt = DateTime.now();
+      // 캐시에 저장 + 만료 항목 청소 (지역을 옮겨다녀도 무한히 안 쌓이게).
+      _scoreCache[key] = _ScoreBundle(
+        score: _scoreEnvelope!,
+        timeline: _timeline!,
+        outdoor: _outdoorTimeline!,
+        indoor: _indoorTimeline!,
+        fetchedAt: _lastRefreshedAt!,
+      );
+      _scoreCache.removeWhere(
+        (_, b) => DateTime.now().difference(b.fetchedAt) >= _scoreCacheTtl,
+      );
       if (_widgetEnabled) {
         WidgetService.update(
           envelope: _scoreEnvelope!,
-          todayBest: todayBestEntry,
-          showTomorrowHint: shouldShowTomorrowHint,
+          featured: featuredEntry,
+          dayOffset: featuredDayOffset,
         );
       }
     } on PpallaeApiException catch (e) {
@@ -523,6 +623,23 @@ class LaundryHomeController extends ChangeNotifier {
     _api.dispose();
     super.dispose();
   }
+}
+
+/// (지역×종류×장소) 조합 하나의 점수 응답 묶음 — 30분 캐시 항목.
+class _ScoreBundle {
+  const _ScoreBundle({
+    required this.score,
+    required this.timeline,
+    required this.outdoor,
+    required this.indoor,
+    required this.fetchedAt,
+  });
+
+  final ScoreEnvelopeModel score;
+  final TimelineEnvelopeModel timeline;
+  final TimelineEnvelopeModel outdoor;
+  final TimelineEnvelopeModel indoor;
+  final DateTime fetchedAt;
 }
 
 ({double lat, double lng}) _latLngFromKmaGrid(int nx, int ny) {

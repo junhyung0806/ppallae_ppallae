@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../api/models/api_models.dart';
+import '../../core/ppallae_native.dart';
 import 'data_source_screen.dart';
 import 'laundry_home_controller.dart';
-import 'legal_screen.dart';
-import 'notices_screen.dart';
 import 'region_search_screen.dart';
 import 'score_criteria_screen.dart';
 
@@ -20,11 +20,46 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   String _versionLine = '버전 …';
+  // null = 확인 전/미지원. false = 최적화 켜짐(갱신 죽을 수 있음). true = 예외 처리됨.
+  bool? _batteryExcluded;
 
   @override
   void initState() {
     super.initState();
     _loadVersion();
+    _refreshBatteryStatus();
+  }
+
+  Future<void> _refreshBatteryStatus() async {
+    final excluded = await PpallaeNative.isIgnoringBatteryOptimizations();
+    if (mounted) setState(() => _batteryExcluded = excluded);
+  }
+
+  Future<void> _openBatterySettings() async {
+    final ok = await PpallaeNative.openBatteryOptimizationSettings();
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('설정 화면을 열 수 없어요. 폰 설정 → 배터리에서 직접 변경해주세요.')),
+      );
+    }
+    // 설정에서 돌아오면 상태 재확인 (약간의 지연 후).
+    await Future.delayed(const Duration(seconds: 1));
+    await _refreshBatteryStatus();
+  }
+
+  Future<void> _addWidgetToHome() async {
+    final supported = await PpallaeNative.isPinWidgetSupported();
+    if (!supported) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('이 기기는 자동 추가를 지원하지 않아요. 홈 화면을 길게 눌러 "빨래빨래" 위젯을 추가해주세요.'),
+          ),
+        );
+      }
+      return;
+    }
+    await PpallaeNative.requestPinWidget(size: '2x1');
   }
 
   Future<void> _loadVersion() async {
@@ -38,6 +73,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     } catch (_) {
       if (mounted) setState(() => _versionLine = '버전 확인 불가');
+    }
+  }
+
+  /// 고객센터 웹 열기. 백엔드 app-config 의 customerCenter URL 우선,
+  /// 비어 있으면 운영 도메인 폴백 (호스팅 확정 전까지 placeholder).
+  Future<void> _openCustomerCenter(BuildContext context) async {
+    final urls = widget.controller.appConfig?.urls;
+    final raw = (urls != null && urls.customerCenter.isNotEmpty)
+        ? urls.customerCenter
+        : 'https://ppallae.app/support';
+    final uri = Uri.tryParse(raw);
+    if (uri == null || uri.host.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('고객센터 준비 중이에요. 곧 열릴 예정입니다.')),
+      );
+      return;
+    }
+    try {
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('고객센터를 열 수 없어요. 잠시 후 다시 시도해주세요.')),
+        );
+      }
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('고객센터를 열 수 없어요. 잠시 후 다시 시도해주세요.')),
+        );
+      }
     }
   }
 
@@ -84,19 +149,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   value: controller.widgetEnabled,
                   onChanged: (v) => controller.setWidgetEnabled(v),
                 ),
+                if (controller.widgetEnabled) ...[
+                  ListTile(
+                    leading: const Icon(Icons.add_to_home_screen_outlined),
+                    title: const Text('홈에 위젯 추가'),
+                    subtitle: const Text('빨래빨래 위젯을 홈 화면에 바로 올려요'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: _addWidgetToHome,
+                  ),
+                  // 배터리 최적화가 켜져 있으면 위젯 자동 갱신이 죽을 수 있음 → 경고 유도.
+                  if (_batteryExcluded == false)
+                    ListTile(
+                      leading: const Icon(Icons.battery_alert_outlined,
+                          color: Color(0xFFD9822B)),
+                      title: const Text('위젯이 자동 갱신되게 하기'),
+                      subtitle: const Text(
+                          '배터리 최적화가 켜져 있어 위젯이 오래된 정보를 보일 수 있어요. '
+                          '"제한 없음"으로 바꾸면 30분마다 자동 갱신됩니다.'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: _openBatterySettings,
+                    )
+                  else if (_batteryExcluded == true)
+                    const ListTile(
+                      leading: Icon(Icons.check_circle_outline,
+                          color: Color(0xFF3A9E6E)),
+                      title: Text('위젯 자동 갱신 켜짐'),
+                      subtitle: Text('배터리 최적화 예외로 지정돼 있어요.'),
+                    ),
+                ],
                 const Divider(),
                 _SectionHeader('정보'),
+                // 공지·FAQ·문의·약관은 고객센터 웹으로 일원화 (2026-07-06 결정).
+                // 앱 내 중복 화면을 제거하고 한 곳에서 운영한다.
                 ListTile(
-                  leading: const Icon(Icons.campaign_outlined),
-                  title: const Text('공지사항'),
-                  subtitle: const Text('업데이트·점검 안내'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          NoticesScreen(apiClient: controller.api),
-                    ),
-                  ),
+                  leading: const Icon(Icons.support_agent_outlined),
+                  title: const Text('고객센터'),
+                  subtitle: const Text('공지 · FAQ · 문의 · 약관/개인정보처리방침'),
+                  trailing: const Icon(Icons.open_in_new, size: 18),
+                  onTap: () => _openCustomerCenter(context),
                 ),
                 ListTile(
                   leading: const Icon(Icons.rule_folder_outlined),
@@ -121,15 +211,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 ListTile(
-                  leading: const Icon(Icons.gavel_outlined),
-                  title: const Text('정책 · 약관 · 문의'),
-                  subtitle: const Text('개인정보처리방침 · 이용약관 · 위치기반 · 문의 · 오픈소스'),
+                  leading: const Icon(Icons.code_outlined),
+                  title: const Text('오픈소스 라이선스'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          LegalScreen(appConfig: controller.appConfig),
-                    ),
+                  onTap: () => showLicensePage(
+                    context: context,
+                    applicationName: '빨래빨래',
+                    applicationLegalese: '© ppallae',
                   ),
                 ),
                 const ListTile(

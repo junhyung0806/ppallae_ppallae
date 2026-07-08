@@ -14,16 +14,23 @@
 .PARAMETER Target
   apk (기본) 또는 appbundle (Play 업로드용 .aab).
 
+.PARAMETER KakaoJsKey
+  카카오 JavaScript 키(비즈니스 채널). 지정 시 --dart-define=PPALLAE_KAKAO_JS_KEY 로
+  주입돼 지도/주변 빨래방이 운영 키로 동작한다. 미지정 시 앱 내 개발용 테스트 키 폴백.
+  (web/index.html 은 정적 파일이라 별도 치환 필요 — 모바일 빌드에만 적용됨.)
+
 .EXAMPLE
   ./scripts/build_release.ps1 -ApiBaseUrl https://ppallae-api.up.railway.app/api/v1
-  ./scripts/build_release.ps1 -ApiBaseUrl https://api.ppallae.app/api/v1 -Target appbundle
+  ./scripts/build_release.ps1 -ApiBaseUrl https://api.ppallae.app/api/v1 -Target appbundle -KakaoJsKey <키>
 #>
 param(
   [Parameter(Mandatory = $true)]
   [string]$ApiBaseUrl,
 
   [ValidateSet('apk', 'appbundle')]
-  [string]$Target = 'apk'
+  [string]$Target = 'apk',
+
+  [string]$KakaoJsKey = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -41,7 +48,15 @@ if ($ApiBaseUrl -match 'localhost|127\.0\.0\.1|10\.0\.2\.2') {
 Write-Host "==> 운영 빌드 ($Target)" -ForegroundColor Cyan
 Write-Host "    API: $ApiBaseUrl" -ForegroundColor Cyan
 
-flutter build $Target --release --dart-define=PPALLAE_API_BASE_URL=$ApiBaseUrl
+$defines = @("--dart-define=PPALLAE_API_BASE_URL=$ApiBaseUrl")
+if ($KakaoJsKey -ne '') {
+  Write-Host "    Kakao JS 키: 주입됨 (운영 키)" -ForegroundColor Cyan
+  $defines += "--dart-define=PPALLAE_KAKAO_JS_KEY=$KakaoJsKey"
+} else {
+  Write-Host "    Kakao JS 키: 미지정 → 앱 내 개발용 테스트 키 사용 (출시 전 -KakaoJsKey 권장)" -ForegroundColor Yellow
+}
+
+flutter build $Target --release @defines
 
 if ($LASTEXITCODE -ne 0) { throw "flutter build 실패 (exit $LASTEXITCODE)" }
 

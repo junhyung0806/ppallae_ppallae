@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:kakao_map_plugin/kakao_map_plugin.dart';
 
-// 웹 index.html과 동일한 카카오 JavaScript 키 (공개 키, 도메인 등록으로 보호).
-// TODO(release): 출시 전 비즈니스 채널의 JS 키로 교체.
-//   - 카카오 개발자 콘솔의 "Web 플랫폼 사이트 도메인" 에
-//     아래 baseUrl(_KakaoMapMobileState.initState)이 등록돼야 SDK가 로드됨.
-//   - 키 값은 채팅/PR에 평문 노출 금지, 보안 채널로 전달.
-//   - web/index.html 의 appkey 2곳도 함께 갱신.
-const _kakaoJsKey = '028e4dd5f3256a25d2e9e11ae30a9eb3';
+import '../../../core/error_codes.dart';
+
+// 카카오 JavaScript 키 — API base URL과 동일하게 빌드타임 주입.
+//   flutter run/build ... --dart-define=PPALLAE_KAKAO_JS_KEY=<키>
+// 미지정 시 개발용 테스트 키로 폴백(로컬 개발 편의). 운영 release 빌드는
+// scripts/build_release.ps1 이 비즈니스 키를 강제 주입한다.
+// TODO(release): 카카오 개발자 콘솔의 "Web 플랫폼 사이트 도메인" 에
+//   아래 baseUrl(_KakaoMapMobileState.initState)이 등록돼야 SDK가 로드됨.
+//   web/index.html 의 appkey 2곳도 같은 키로 갱신 (정적 파일이라 별도 치환).
+const _kakaoJsKey = String.fromEnvironment(
+  'PPALLAE_KAKAO_JS_KEY',
+  defaultValue: '028e4dd5f3256a25d2e9e11ae30a9eb3',
+);
 bool _authInitialized = false;
 
 /// 모바일(Android/iOS)용 카카오맵 — kakao_map_plugin(WebView + JS SDK) 사용.
@@ -82,7 +88,9 @@ class _KakaoMapMobileState extends State<_KakaoMapMobile> {
       // kakao_map_plugin이 일부 환경에서 JS 초기화 늦어 clearMarker/addMarker
       // not defined 에러를 던지는 경우 있음. 초기 markers prop으로 이미 그려진
       // 마커가 있으므로 무시. 다음 didUpdateWidget에서 재시도됨.
-      debugPrint('PpallaeMap _placeMarker skip: $e');
+      PpallaeError(ErrorCodes.mapMarker, '지도 마커 갱신을 건너뛰었어요(재시도 예정).',
+              e.toString())
+          .log();
     }
   }
 

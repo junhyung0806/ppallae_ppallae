@@ -30,7 +30,7 @@ class PpallaeApiClient {
     // release 빌드에선 출력되지 않아 민감 URL 노출 없음.
     if (kDebugMode) {
       // ignore: avoid_print
-      debugPrint('[PpallaeApi] base=$baseUrl');
+      debugPrint('[PpallaeApi] base=${this.baseUrl}');
     }
   }
 
@@ -105,14 +105,7 @@ class PpallaeApiClient {
     return TimelineEnvelopeModel.fromJson(json as Map<String, dynamic>);
   }
 
-  /// 활성 공지 목록. priority desc → createdAt desc.
-  Future<List<NoticeModel>> activeNotices() async {
-    final uri = Uri.parse('$baseUrl/notices/active');
-    final json = await _getJson(uri);
-    return (json as List<dynamic>)
-        .map((e) => NoticeModel.fromJson(e as Map<String, dynamic>))
-        .toList();
-  }
+  // NOTE(2026-07-09): activeNotices 는 공지가 고객센터 웹으로 일원화되며 제거.
 
   /// 공개 앱 설정 — 강제 업데이트, 점검 모드, 정책 URL, 피처 플래그.
   /// 시작 시 1회 호출, 실패 시 앱은 그대로 진행하고 정책 URL 등은 로컬 폴백 사용.
@@ -135,7 +128,10 @@ class PpallaeApiClient {
     return LaundromatsEnvelopeModel.fromJson(json as Map<String, dynamic>);
   }
 
-  Future<dynamic> _getJson(Uri uri) async {
+  // NOTE(2026-07-06): 문의 접수/조회는 고객센터 웹으로 일원화 — 앱 측
+  // submitInquiry/inquiryStatus 제거. 백엔드 API 는 웹이 동일하게 사용한다.
+
+  Future<dynamic> _getJson(Uri uri, {String? failCode}) async {
     final http.Response response;
     try {
       response = await _http
@@ -154,11 +150,20 @@ class PpallaeApiClient {
       );
     }
 
+    if (response.statusCode == 429) {
+      // rate limit — 서버가 요청 과다로 잠시 차단. 사용자에게 재시도 안내.
+      throw PpallaeApiException(
+        '요청이 많아 잠시 제한됐어요. 잠시 후 다시 시도해주세요.',
+        statusCode: response.statusCode,
+        code: ErrorCodes.apiRateLimited,
+      );
+    }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw PpallaeApiException(
         '요청 실패',
         statusCode: response.statusCode,
-        code: ErrorCodes.apiHttp,
+        // failCode 지정 시 엔드포인트별 의미 코드로 노출 (예: 문의 404 → INQ-002).
+        code: failCode ?? ErrorCodes.apiHttp,
       );
     }
 

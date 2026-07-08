@@ -7,6 +7,8 @@ import 'dart:ui_web' as ui_web;
 
 import 'package:flutter/material.dart';
 
+import '../../../core/error_codes.dart';
+
 Widget buildKakaoMapView({
   required double latitude,
   required double longitude,
@@ -74,6 +76,8 @@ class _KakaoMapViewWebState extends State<_KakaoMapViewWeb> {
           _container.clientHeight > 0) {
         _scheduleInit();
       } else if (_map != null) {
+        // 400ms 주기 relayout — 전환 애니메이션 중 일시 실패는 정상이고
+        // 매 tick 로깅하면 스팸이 되므로 의도적으로 조용히 무시한다.
         try {
           _map!.callMethod('relayout');
         } catch (_) {}
@@ -204,10 +208,14 @@ class _KakaoMapViewWebState extends State<_KakaoMapViewWeb> {
       ]);
       _map!.callMethod('setCenter', [center]);
       _placeMarker(maps as js.JsObject, widget.latitude, widget.longitude);
-    } catch (_) {}
+    } catch (e) {
+      PpallaeError(ErrorCodes.mapMarker, '지도 위치 갱신에 실패했어요.', e.toString())
+          .log();
+    }
   }
 
   void _fail(String message) {
+    PpallaeError(ErrorCodes.mapInit, message).log();
     if (mounted) {
       setState(() {
         _ready = false;

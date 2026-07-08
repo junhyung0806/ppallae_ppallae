@@ -1,44 +1,6 @@
 // 새 NestJS 백엔드 응답 모델
-
-/// `GET /notices/active` 응답 1건.
-/// startAt/endAt 은 null 가능 (상시 공지).
-class NoticeModel {
-  const NoticeModel({
-    required this.id,
-    required this.title,
-    required this.content,
-    required this.isImportant,
-    required this.priority,
-    required this.createdAt,
-    this.startAt,
-    this.endAt,
-  });
-
-  factory NoticeModel.fromJson(Map<String, dynamic> json) {
-    return NoticeModel(
-      id: json['id'] as String,
-      title: json['title'] as String,
-      content: json['content'] as String? ?? '',
-      isImportant: json['isImportant'] as bool? ?? false,
-      priority: (json['priority'] as num?)?.toInt() ?? 0,
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      startAt: json['startAt'] == null
-          ? null
-          : DateTime.parse(json['startAt'] as String),
-      endAt:
-          json['endAt'] == null ? null : DateTime.parse(json['endAt'] as String),
-    );
-  }
-
-  final String id;
-  final String title;
-  final String content;
-  final bool isImportant;
-  final int priority;
-  final DateTime createdAt;
-  final DateTime? startAt;
-  final DateTime? endAt;
-}
+//
+// NOTE(2026-07-09): NoticeModel 은 공지가 고객센터 웹으로 일원화되며 제거.
 
 /// `GET /app-config/public` 응답.
 /// 강제 업데이트, 점검 모드, 정책 URL, 피처 플래그를 한 번에 전달.
@@ -278,6 +240,7 @@ class LaundryScoreModel {
     required this.estimatedDryHoursMax,
     required this.grade,
     required this.warningTexts,
+    this.estimatedCompletionAt,
   });
 
   factory LaundryScoreModel.fromJson(Map<String, dynamic> json) {
@@ -291,6 +254,10 @@ class LaundryScoreModel {
       warningTexts: (json['warningTexts'] as List<dynamic>)
           .map((e) => e as String)
           .toList(),
+      // "몇 시에 다 마른다" 절대 완료시각 (ISO). 백엔드 V2 산출, 못 마르면 null.
+      estimatedCompletionAt: json['estimatedCompletionAt'] == null
+          ? null
+          : DateTime.parse(json['estimatedCompletionAt'] as String),
     );
   }
 
@@ -301,6 +268,9 @@ class LaundryScoreModel {
   final double estimatedDryHoursMax;
   final String grade;
   final List<String> warningTexts;
+
+  /// 예상 건조 완료 시각. null = 건조창 내 못 마름 or 미제공.
+  final DateTime? estimatedCompletionAt;
 }
 
 class WeatherSummaryModel {
@@ -432,3 +402,6 @@ class TimelineEnvelopeModel {
   final String? bestStartTimeRange;
   final List<TimelineEntryModel> timeline;
 }
+
+// NOTE(2026-07-06): Inquiry 모델은 고객센터 웹으로 일원화되며 앱에서 제거.
+// 백엔드 API(POST /inquiries, GET /inquiries/:id)는 웹이 동일하게 사용한다.

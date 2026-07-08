@@ -22,10 +22,14 @@ class PpallaeWidget1x1Provider : HomeWidgetProvider() {
         val gradeCode = widgetData.getString("gradeCode", "") ?: ""
         val score = widgetData.getString("score", "-") ?: "-"
         val gradeLabel = PpallaeWidgetCommon.gradeLabel(gradeCode)
+        // 신선도: 데이터가 오래됐으면(3h+) 점수/등급을 흐리게 → stale 을 눈치채게.
+        // 1x1 은 공간이 없어 "n분 전" 텍스트 대신 흐림 처리만 한다.
+        val updatedAtMs = PpallaeWidgetCommon.parseUpdatedAtMs(widgetData)
+        val stale = PpallaeWidgetCommon.isStale(updatedAtMs)
 
         Log.i(
             PpallaeWidgetCommon.TAG,
-            "1x1 onUpdate ids=${appWidgetIds.toList()} grade=$gradeCode score=$score"
+            "1x1 onUpdate ids=${appWidgetIds.toList()} grade=$gradeCode score=$score stale=$stale"
         )
 
         appWidgetIds.forEach { widgetId ->
@@ -38,6 +42,10 @@ class PpallaeWidget1x1Provider : HomeWidgetProvider() {
                     )
                     setTextViewText(R.id.widget_score, score)
                     setTextViewText(R.id.widget_grade, gradeLabel)
+                    if (stale) {
+                        setTextColor(R.id.widget_score, PpallaeWidgetCommon.STALE_TEXT_COLOR)
+                        setTextColor(R.id.widget_grade, PpallaeWidgetCommon.STALE_TEXT_COLOR)
+                    }
                     setOnClickPendingIntent(
                         R.id.widget_root,
                         HomeWidgetLaunchIntent.getActivity(context, MainActivity::class.java)

@@ -25,8 +25,13 @@ class PpallaeWidget3x1Provider : HomeWidgetProvider() {
         val scoreStr = widgetData.getString("score", "-") ?: "-"
         val recoStart = widgetData.getString("recoStart", "--:--") ?: "--:--"
         val recoEnd = widgetData.getString("recoEnd", "--:--") ?: "--:--"
-        val recoText = if (recoEnd.isNotEmpty()) "추천 시간 : $recoStart ~ $recoEnd"
+        val baseReco = if (recoEnd.isNotEmpty()) "추천 시간 : $recoStart ~ $recoEnd"
         else "추천 시간 : $recoStart"
+        // 신선도: "· n분 전" 을 추천 라인에 덧붙이고, 오래됐으면(3h+) 흐리게.
+        val updatedAtMs = PpallaeWidgetCommon.parseUpdatedAtMs(widgetData)
+        val stale = PpallaeWidgetCommon.isStale(updatedAtMs)
+        val freshness = PpallaeWidgetCommon.freshnessLabel(updatedAtMs)
+        val recoText = if (freshness.isNotEmpty()) "$baseReco · $freshness" else baseReco
         val gradeLabel = PpallaeWidgetCommon.gradeLabel(gradeCode)
         val scoreInt = scoreStr.toIntOrNull() ?: 0
         val dotIndex = gradeToDotIndex(gradeCode)
@@ -34,7 +39,7 @@ class PpallaeWidget3x1Provider : HomeWidgetProvider() {
         Log.i(
             PpallaeWidgetCommon.TAG,
             "2x1 onUpdate ids=${appWidgetIds.toList()} grade=$gradeCode " +
-                "score=$scoreStr dotIdx=$dotIndex"
+                "score=$scoreStr dotIdx=$dotIndex stale=$stale"
         )
 
         appWidgetIds.forEach { widgetId ->
@@ -49,6 +54,10 @@ class PpallaeWidget3x1Provider : HomeWidgetProvider() {
                         PpallaeWidgetCommon.gradeIcon(gradeCode)
                     )
                     setProgressBar(R.id.widget_score_bar, 100, scoreInt, false)
+                    if (stale) {
+                        setTextColor(R.id.widget_score, PpallaeWidgetCommon.STALE_TEXT_COLOR)
+                        setTextColor(R.id.widget_reco, PpallaeWidgetCommon.STALE_TEXT_COLOR)
+                    }
 
                     // 4 dot 슬롯 중 등급에 맞는 하나만 보이기
                     val dotIds = intArrayOf(

@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../api/models/api_models.dart';
+import '../../core/kst_time.dart';
 import 'grade_utils.dart';
 import 'laundry_home_controller.dart';
+import 'timeline_best.dart';
 import 'map/kakao_map_view.dart';
 import 'map_fullscreen_screen.dart';
 import 'settings_screen.dart';
@@ -44,7 +46,8 @@ class LaundryHomeScreen extends StatelessWidget {
           animation: _controller,
           builder: (context, _) {
             return RefreshIndicator(
-              onRefresh: _controller.refresh,
+              // 당겨서 새로고침 = 사용자가 명시적으로 최신 요청 → 30분 캐시 무시.
+              onRefresh: () => _controller.refresh(force: true),
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
                 children: [
@@ -65,7 +68,8 @@ class LaundryHomeScreen extends StatelessWidget {
                   if (_controller.error != null)
                     _ErrorCard(
                       message: _controller.error!,
-                      onRetry: _controller.refresh,
+                      // 에러 후 재시도도 강제 갱신 (실패 시 캐시가 없거나 낡음).
+                      onRetry: () => _controller.refresh(force: true),
                     )
                   else if (_controller.scoreEnvelope == null)
                     const _LoadingState()
@@ -700,9 +704,24 @@ class _LaundromatList extends StatelessWidget {
 /// `formatStartRange` 와 동일 식.
 String _formatTodayRecoRange(DateTime start) {
   final hang = start.add(const Duration(minutes: 45));
-  String fmt(DateTime d) =>
-      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
-  return '${fmt(start)} ~ ${fmt(hang)}';
+  return '${formatKstHm(start)} ~ ${formatKstHm(hang)}';
+}
+
+/// 건조 완료 시각 라벨 — "HH:mm 완료" (오늘 아니면 "내일 HH:mm 완료").
+/// null(못 마름/미제공)이면 라벨 없음.
+String? _formatCompletion(DateTime? completionAt) {
+  if (completionAt == null) return null;
+  final c = toKst(completionAt);
+  final cMidnight = DateTime.utc(c.year, c.month, c.day);
+  final days = cMidnight.difference(kstStartOfToday()).inDays;
+  final prefix = days <= 0
+      ? ''
+      : days == 1
+          ? '내일 '
+          : days == 2
+              ? '모레 '
+              : '';
+  return '$prefix${formatKstHm(completionAt)} 완료';
 }
 
 /// 점수 카드 내부의 라벨+값 한 줄 박스.
@@ -871,15 +890,18 @@ class _ScoreCard extends StatelessWidget {
       );
     }
 
-    // 점수 카드는 오늘(현재 시각 ~ 오늘 자정) 안의 최적 후보 기준으로 표시.
-    // 오늘 후보가 없으면 envelope.score(글로벌 best) 로 폴백.
-    final todayBest = controller.todayBestEntry;
+    // 점수 카드는 "featured 후보" 기준 — 오늘이 빨래할 만하면(≥NORMAL) 오늘,
+    // 아니면(밤/비 등) 다음 좋은 시간대(내일 아침 등)로 롤오버. 오늘 후보가
+    // 아예 없으면 envelope.score(글로벌 best) 로 폴백.
+    final featured = controller.featuredEntry;
+    final dayOffset = controller.featuredDayOffset;
+    final dayLabel = dayOffsetLabel(dayOffset); // '' | 내일 | 모레 …
     final loading = controller.loading;
 
     final int overallScore =
-        todayBest?.overallScore ?? envelope.score.overallScore;
-    final String rawGrade = (todayBest?.grade.isNotEmpty ?? false)
-        ? todayBest!.grade
+        featured?.overallScore ?? envelope.score.overallScore;
+    final String rawGrade = (featured?.grade.isNotEmpty ?? false)
+        ? featured!.grade
         : envelope.score.grade;
     final grade =
         rawGrade.isNotEmpty ? rawGrade : gradeFromScore(overallScore);
@@ -893,17 +915,21 @@ class _ScoreCard extends StatelessWidget {
     final color = _gradeColor(grade);
     final iconAsset = _gradeIconAsset(grade);
 
-    // 추천 시간 박스 라벨 = "오늘 HH:MM ~ HH:MM". 종료 시각은 시작 + 45분(세탁) hangAt 추정.
-    // todayBest 가 없으면 오늘은 추천 시간 자체가 없음.
-    final hasRecommendation = todayBest != null;
+    // 추천 시간 박스 라벨 = "(내일) HH:MM ~ HH:MM". 종료 시각은 시작 + 45분(세탁) hangAt 추정.
+    final hasRecommendation = featured != null;
     final String range = hasRecommendation
-        ? _formatTodayRecoRange(todayBest.forecastAt.toLocal())
-        : '오늘은 빨래 추천이 어려워요';
+        ? (dayLabel.isEmpty
+            ? _formatTodayRecoRange(featured.forecastAt)
+            : '$dayLabel ${_formatTodayRecoRange(featured.forecastAt)}')
+        : '지금은 빨래 추천이 어려워요';
     final double dryMin =
-        todayBest?.estimatedDryHoursMin ?? envelope.score.estimatedDryHoursMin;
+        featured?.estimatedDryHoursMin ?? envelope.score.estimatedDryHoursMin;
     final double dryMax =
-        todayBest?.estimatedDryHoursMax ?? envelope.score.estimatedDryHoursMax;
-    final showTomorrow = controller.shouldShowTomorrowHint;
+        featured?.estimatedDryHoursMax ?? envelope.score.estimatedDryHoursMax;
+    // "몇 시에 다 마른다" — 백엔드 완료 절대시각(KST). 못 마르면 null → 라벨 미표시.
+    final completionLabel = _formatCompletion(
+      envelope.score.estimatedCompletionAt,
+    );
 
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
@@ -995,30 +1021,31 @@ class _ScoreCard extends StatelessWidget {
             ],
           ),
           // ── 추천 빨래 시간 ──
-          // 오늘(현재 ~ 자정) 최적 시각. todayBest 없으면 "추천 어려움".
-          // 오늘 점수가 60 미만이면 우측에 작은 "내일 추천" 라벨 표시.
+          // featured 시각. 오늘이 가망 없으면 "내일 10:00 ~ …" 처럼 day 접두가 붙는다.
           const SizedBox(height: 14),
           _ScoreInfoRow(
             label: '추천 시간',
             value: range,
             valueColor: color,
             bgColor: color.withValues(alpha: 0.08),
-            tailLabel: showTomorrow ? '내일 추천' : null,
+            // range 에 "내일"이 이미 포함되므로 tail 배지는 중복 — 미표시.
+            tailLabel: null,
           ),
-          // ── 예상 건조 시간 ──
+          // ── 예상 건조 시간 (+ 완료 시각) ──
           const SizedBox(height: 8),
           _ScoreInfoRow(
             label: '예상 건조 시간',
             value: _formatDryTime(dryMin, dryMax),
             valueColor: color,
             bgColor: color.withValues(alpha: 0.08),
+            tailLabel: completionLabel, // 예: "12:31 완료"
           ),
-          // ── 실외 vs 실내 점수 비교 (오늘 기준 — outdoor/indoor 각각 별도 timeline 호출) ──
+          // ── 실외 vs 실내 점수 비교 (featured 시점 기준) ──
           const SizedBox(height: 8),
           _IndoorOutdoorRow(
-            outdoorScore: controller.todayBestOutdoor?.overallScore ??
+            outdoorScore: controller.featuredOutdoor?.overallScore ??
                 envelope.score.outdoorScore,
-            indoorScore: controller.todayBestIndoor?.overallScore ??
+            indoorScore: controller.featuredIndoor?.overallScore ??
                 envelope.score.indoorScore,
           ),
           if (envelope.score.warningTexts.isNotEmpty) ...[
@@ -1425,11 +1452,10 @@ String? _formatTimelineDry(double min, double max) {
   return '${min.toStringAsFixed(0)}~${max.toStringAsFixed(0)}h';
 }
 
-/// 시간별 카드 라벨용 — 분 정보 무시하고 정시(HH시)로 표기.
+/// 시간별 카드 라벨용 — 분 정보 무시하고 정시(HH시)로 표기 (KST 기준).
 /// 백엔드 후보가 :15, :30 등 5분 ceiling 시각이라도 사용자에겐 정시로 보임.
 String _formatTimelineHour(DateTime dateTime) {
-  final local = dateTime.toLocal();
-  final hour = local.hour.toString().padLeft(2, '0');
+  final hour = toKst(dateTime).hour.toString().padLeft(2, '0');
   return '$hour시';
 }
 

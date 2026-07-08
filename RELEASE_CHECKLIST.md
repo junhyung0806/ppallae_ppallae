@@ -1,13 +1,12 @@
 # 빨래빨래 모바일 앱 — 출시 체크리스트
 
-이 문서는 **모바일 앱(`C:\Users\asdfc\ppallae_ppallae`) 한정** 출시 준비 추적표입니다.
-백엔드·관리자·고객센터·문서·인프라는 코덱스 담당이며 형제 저장소에서 별도 추적합니다.
+이 문서는 **모바일 앱(`C:\Users\asdfc\ppallae_ppallae`) 중심** 출시 준비 추적표입니다.
+6개 저장소(앱/API/관리자/고객센터/문서/인프라) 전부 단일 개발자 소유 — 과거 "코덱스 담당" 분담은 2026-06-30 폐기.
 
 ## 범례
 - [ ] = 미완료
 - [x] = 완료
-- ⏸ = 외부(코덱스/사용자) 결정·작업 대기
-- 🤝 = 코덱스와 핸드오프 필요
+- ⏸ = 사용자 결정·외부 작업 대기
 
 ---
 
@@ -39,6 +38,12 @@
 - [x] 모노레포 잔재 정리 (2026-06-03): `apps/`, `docker-compose.yml`, `ARCHITECTURE.md` 삭제 + 미사용 의존성 (`geocoding`, `google_maps_flutter`, `cupertino_icons`, `js`) 제거
 - [x] 설정 화면 버전 표시 동적 로딩 (`package_info_plus` — pubspec과 자동 일치)
 - [x] 정책/약관/문의 허브 화면 (`legal_screen.dart`) 스캐폴드
+- [x] 점검 모드 + 강제 업데이트 게이트 (`laundry_shell.dart` — 시작 시 app-config 평가, semver 비교, 차단 다이얼로그)
+- [x] **위젯 백그라운드 갱신** (2026-07-04): WorkManager 30분 주기로 마지막 지역/조건 재조회 → 앱 안 열어도 위젯 최신화 (`widget_refresh.dart`, 지역코드 영속화 포함)
+- [x] **전역 에러 핸들러** (2026-07-04): `FlutterError.onError` + `PlatformDispatcher.onError` → `crash_report.dart` 단일 수집 지점 (Crashlytics 통합 시 이 파일만 교체)
+- [x] 다크모드 방침 확정 (2026-07-04): 1.0 라이트 고정 (`themeMode: ThemeMode.light` 명시), 다크 대응은 1.1에서 등급 팔레트 재검증과 함께
+- [x] 백엔드 일출·일몰 실계산 교체 (2026-07-04): 07~18시 고정 → NOAA 알고리즘 + 격자 역변환 좌표 (계절 오차 제거)
+- [x] 죽은 enum 제거 (2026-07-04): 백엔드 `DryingPlace` 에서 INDOOR_DEHUMIDIFIER/DRYER 삭제 — 앱·서버 3종 1:1 일치
 
 ---
 
@@ -107,15 +112,23 @@
 
 ---
 
-## 3. 코덱스/외부 작업 대기 ⏸
+## 3. 외부 결정 대기 ⏸
 
 | 항목 | 트리거 | 내 작업 |
 |---|---|---|
 | Kakao 비즈 키 교체 | 비즈 키 발급 + 카카오 콘솔 도메인 등록 | `web/index.html` 2곳 + `lib/features/laundry/map/kakao_map_view_mobile.dart` 2곳 (키 + WebView origin) |
 | `usesCleartextTraffic` 제거 | 백엔드 HTTPS 운영 시작 | `android/app/src/main/AndroidManifest.xml:10` 라인 제거 |
 | 약관/공지/문의 URL 링크 | `customer_web` 정식 URL 확정 | 설정 화면에서 `url_launcher`로 외부 링크 |
-| 앱 버전 / 강제 업데이트 | 백엔드 `/app-config/public` 응답 스키마 확정 | `PpallaeApiClient`에 endpoint 추가, 시작 시 체크, 강제 업데이트 다이얼로그 |
+| ~~앱 버전 / 강제 업데이트~~ | ~~스키마 확정~~ | **완료** — `laundry_shell.dart` 게이트 구현됨 (점검 모드 포함) |
 | 운영 API URL | 운영 도메인 결정 | `--dart-define=PPALLAE_API_BASE_URL=https://...` 로 release 빌드 |
+| 강제 업데이트 스토어 URL | Play 등록 완료 | `laundry_shell.dart` 의 Play 홈 폴백 URL → 실제 앱 상세 URL |
+
+### 3.1 운영 준비 (백엔드 배포와 세트)
+- [ ] 헬스 모니터링: 운영 `/api/v1/health` 를 UptimeRobot 등 외부 감시에 등록 (다운 알림)
+- [ ] 에러 수집: NestJS 에 Sentry(또는 유사) 연동 검토 — 현재 서버 에러는 로그로만 남음
+- [ ] DB 자동 백업: Railway/호스팅 플랜 백업 확인 + 복구 리허설 1회
+- [ ] KMA 쿼터 재검산: 현재 지역 47개 × 30분 주기 × 2콜 ≈ **일 4,500콜** + 에어코리아 일 1,128콜.
+  콘솔에서 실제 쿼터 확인. **지역 확대 시 (nx,ny) 중복 제거 필수** — 전국 확대 시 현 구조는 쿼터 초과.
 
 ---
 

@@ -3,7 +3,9 @@ import 'package:home_widget/home_widget.dart';
 
 import '../../api/models/api_models.dart';
 import '../../core/error_codes.dart';
+import '../../core/kst_time.dart';
 import 'grade_utils.dart';
+import 'timeline_best.dart';
 
 /// 홈 위젯(Android)에 빨래지수 요약을 전달한다. 웹/미지원 플랫폼에서는 무시.
 class WidgetService {
@@ -21,8 +23,8 @@ class WidgetService {
 
   static Future<void> update({
     required ScoreEnvelopeModel envelope,
-    TimelineEntryModel? todayBest,
-    bool showTomorrowHint = false,
+    TimelineEntryModel? featured,
+    int dayOffset = 0,
   }) async {
     if (kIsWeb) {
       const PpallaeError(
@@ -37,14 +39,14 @@ class WidgetService {
     // (`region`/`grade`(label)/`updatedAt`/`currentDate`/`currentTime` 은
     // 과거 디자인 잔재로 죽은 저장이라 제거.)
     //
-    // 점수/등급/추천 시각은 오늘(현재~자정) 최적 후보 기준으로 표시.
-    // todayBest 가 없으면 (오늘 후보 0개) score envelope 의 글로벌 best 로 폴백.
+    // 점수/등급/추천 시각은 featured 후보 기준 (오늘이 가망 없으면 내일 아침 등으로 롤오버).
+    // featured 가 없으면 score envelope 의 글로벌 best 로 폴백.
     try {
       final int overallScore =
-          todayBest?.overallScore ?? envelope.score.overallScore;
+          featured?.overallScore ?? envelope.score.overallScore;
       final String serverGrade =
-          (todayBest?.grade.isNotEmpty ?? false)
-              ? todayBest!.grade
+          (featured?.grade.isNotEmpty ?? false)
+              ? featured!.grade
               : envelope.score.grade;
       final grade = serverGrade.isNotEmpty
           ? serverGrade
@@ -58,14 +60,15 @@ class WidgetService {
       }
       await HomeWidget.saveWidgetData<String>('score', '$overallScore');
       await HomeWidget.saveWidgetData<String>('gradeCode', grade);
-      final (recoStart, recoEnd) = _recoFromTodayBest(todayBest);
+      // recoStart 에 day 접두("내일") 포함 → 위젯 "추천 시간 : 내일 10:00 ~ 10:45".
+      final (recoStart, recoEnd) = _recoFromFeatured(featured, dayOffset);
       await HomeWidget.saveWidgetData<String>('recoStart', recoStart);
-      // showTomorrowHint 면 recoEnd 자리에 "내일 추천" 보조 라벨을 함께 표시.
-      // 위젯 layout 의 widget_reco 가 "추천 시간 : recoStart ~ recoEnd" 로 합치므로
-      // 가독성 위해 hangAt 시각 대신 보조 라벨로 대체.
+      await HomeWidget.saveWidgetData<String>('recoEnd', recoEnd);
+      // 갱신 시각(신선도) — 위젯이 "n분 전" 을 렌더하고, 오래되면(예: 3h+)
+      // 회색 처리해 stale 데이터를 사용자가 눈치채게 한다. epoch millis(UTC).
       await HomeWidget.saveWidgetData<String>(
-        'recoEnd',
-        showTomorrowHint ? '내일 추천' : recoEnd,
+        'updatedAtMs',
+        '${DateTime.now().toUtc().millisecondsSinceEpoch}',
       );
     } catch (e) {
       PpallaeError(
@@ -99,6 +102,8 @@ class WidgetService {
       await HomeWidget.saveWidgetData<String>('gradeCode', '');
       await HomeWidget.saveWidgetData<String>('recoStart', '꺼짐');
       await HomeWidget.saveWidgetData<String>('recoEnd', '');
+      // 비활성 시엔 갱신 시각을 비워 위젯이 "n분 전" 을 숨기도록.
+      await HomeWidget.saveWidgetData<String>('updatedAtMs', '');
       for (final provider in _androidProviders) {
         await HomeWidget.updateWidget(androidName: provider);
       }
@@ -112,16 +117,16 @@ class WidgetService {
   }
 }
 
-/// 오늘 최적 후보의 시작/종료 시각 라벨.
-/// recoStart = 시작 HH:MM, recoEnd = 시작 + 세탁 45분 (hangAt 추정).
-/// 백엔드의 hangAt 계산식과 동일하지만 timeline entry 에 hangAt 이 없어 클라이언트 추정.
-/// todayBest 가 null 이면 ("지금은", "비추천") 폴백.
-(String, String) _recoFromTodayBest(TimelineEntryModel? best) {
+/// featured 후보의 시작/종료 시각 라벨 (KST 벽시계 기준).
+/// recoStart = (내일 )HH:MM, recoEnd = 시작 + 세탁 45분 (hangAt 추정).
+/// dayOffset>0 이면 시작 시각 앞에 "내일/모레" 접두를 붙인다.
+/// best 가 null 이면 ("지금은", "비추천") 폴백.
+(String, String) _recoFromFeatured(TimelineEntryModel? best, int dayOffset) {
   if (best == null) return ('지금은', '비추천');
-  final start = best.forecastAt.toLocal();
-  final hang = start.add(const Duration(minutes: 45));
-  String fmt(DateTime d) =>
-      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
-  return (fmt(start), fmt(hang));
+  final hang = best.forecastAt.add(const Duration(minutes: 45));
+  final label = dayOffsetLabel(dayOffset);
+  final start =
+      label.isEmpty ? formatKstHm(best.forecastAt) : '$label ${formatKstHm(best.forecastAt)}';
+  return (start, formatKstHm(hang));
 }
 
