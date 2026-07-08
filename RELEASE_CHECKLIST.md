@@ -83,14 +83,14 @@
 - [ ] 연락처 이메일
 
 ### 2.5 출시 차단 사항 (Play 업로드 거부 요인) ⏸ 출시 직전 일괄 처리
-**아래 둘 다 미해결 — release 빌드는 가능하지만 Play 제출은 불가.**
+**✅ 둘 다 해결 완료 (2026-07-09)** — applicationId `com.ppallae.app` 확정·전체 rename, release keystore 서명 적용. 실기기에 정식 서명 앱 설치 검증. **keystore(`~/ppallae-release.jks`)와 `android/key.properties` 백업 필수.**
 **의도된 보류 상태** — 사용자 결정으로 출시 직전 한 세션에 함께 처리한다.
 
-- [ ] **applicationId 변경** — 현재 `com.example.ppallae_ppallae`. Play 정책상 `com.example.*` 거부됨.
+- [x] **applicationId 변경** — `com.ppallae.app` 확정 (2026-07-09).
   - `android/app/build.gradle.kts:24` (applicationId), 같은 파일 `namespace` (line 9), `android/app/src/main/kotlin/com/example/ppallae_ppallae/*.kt` 파일들의 package 선언, `AndroidManifest.xml`의 component 참조까지 함께 옮겨야 함
   - Play Console 업로드 후에는 영구 변경 불가 → 한 번에 결정
   - **후보 (이전 논의):** `com.ppallae.app` (브랜드 도메인과 일치), `com.junhyung.ppallae` (개인 네임스페이스)
-- [ ] **Release 서명 키** — 현재 debug 키로 서명 중 (build.gradle.kts:47)
+- [x] **Release 서명 키** — keystore 생성·서명 적용 완료 (2026-07-09). apksigner CN=ppallae 검증.
   - 사용자 실행: `keytool -genkey -v -keystore $env:USERPROFILE\ppallae-release.jks -keyalg RSA -keysize 2048 -validity 36500 -alias ppallae`
   - 비밀번호 안전한 곳에 백업 (잃어버리면 앱 업데이트 영구 불가)
   - `android/key.properties` 생성 (gitignore 확인)

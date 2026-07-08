@@ -3,7 +3,11 @@
     "allow": [
       "Read(//c/Users/asdfc/**)",
       "Bash(grep -iE \"\\\\.\\(py|ts|js|yaml|yml|json|md\\)$\")",
-      "Bash(gh auth *)"
+      "Bash(gh auth *)",
+      "Bash(grep -vE \"^import|^$\")"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\asdfc\\ppallae_ppallae_customer_web"
     ]
   }
 }
