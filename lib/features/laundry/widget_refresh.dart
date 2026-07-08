@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 
-import '../../api/models/api_models.dart';
 import '../../api/ppallae_api_client.dart';
 import '../../core/error_codes.dart';
 import 'laundry_prefs.dart';
@@ -61,25 +60,16 @@ void widgetRefreshDispatcher() {
 
       final api = PpallaeApiClient();
       try {
-        final results = await Future.wait([
-          api.currentScore(
-            regionCode: regionCode,
-            laundryTypeCode: laundryTypeCode,
-            dryingPlace: dryingPlace,
-            laundryAmount: kFixedLaundryAmount,
-          ),
-          api.timeline(
-            regionCode: regionCode,
-            laundryTypeCode: laundryTypeCode,
-            dryingPlace: dryingPlace,
-            laundryAmount: kFixedLaundryAmount,
-          ),
-        ]);
-        final envelope = results[0] as ScoreEnvelopeModel;
-        final timeline = results[1] as TimelineEnvelopeModel;
-        final featured = featuredEntryOf(timeline);
+        // 홈 번들 1콜 (앱과 동일 경로) — 백그라운드에서도 왕복 최소화.
+        final bundle = await api.homeBundle(
+          regionCode: regionCode,
+          laundryTypeCode: laundryTypeCode,
+          dryingPlace: dryingPlace,
+          laundryAmount: kFixedLaundryAmount,
+        );
+        final featured = featuredEntryOf(bundle.timeline);
         await WidgetService.update(
-          envelope: envelope,
+          envelope: bundle.current,
           featured: featured,
           dayOffset: featuredDayOffsetOf(featured),
         );

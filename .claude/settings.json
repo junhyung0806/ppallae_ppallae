@@ -4,7 +4,14 @@
       "Read(//c/Users/asdfc/**)",
       "Bash(grep -iE \"\\\\.\\(py|ts|js|yaml|yml|json|md\\)$\")",
       "Bash(gh auth *)",
-      "Bash(grep -vE \"^import|^$\")"
+      "Bash(grep -vE \"^import|^$\")",
+      "Bash(cd /c/Users/asdfc/ppallae_ppallae_api_server *)",
+      "Read(//c/Users/asdfc/ppallae_ppallae_api_server/**)",
+      "Bash(curl -s -m 3 http://localhost:4000/api/v1/health)",
+      "Bash(curl -s -m 20 \"http://localhost:4000/api/v1/laundry-score/home?regionCode=1111010100&laundryTypeCode=LIGHT&dryingPlace=OUTDOOR&laundryAmount=MEDIUM\")",
+      "Bash(python -c ' *)",
+      "Bash(curl -s -m 10 -o /dev/null -w \"  POST /estimate → HTTP %{http_code}\\\\n\" -X POST http://localhost:4000/api/v1/laundry-score/estimate -H \"Content-Type: application/json\" -d '{}')",
+      "Bash(docker exec *)"
     ],
     "additionalDirectories": [
       "C:\\Users\\asdfc\\ppallae_ppallae_customer_web"

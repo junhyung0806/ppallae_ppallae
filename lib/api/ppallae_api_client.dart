@@ -69,13 +69,15 @@ class PpallaeApiClient {
         .toList();
   }
 
-  Future<ScoreEnvelopeModel> currentScore({
+  /// 홈 번들 — current + timeline(선택/실외/실내) 을 한 번에.
+  /// 기존 4콜(current + timeline×3)을 1콜로 줄여 서버 왕복·rate limit 압력을 낮춤.
+  Future<HomeBundleModel> homeBundle({
     required String regionCode,
     required String laundryTypeCode,
     required String dryingPlace,
     required String laundryAmount,
   }) async {
-    final uri = Uri.parse('$baseUrl/laundry-score/current').replace(
+    final uri = Uri.parse('$baseUrl/laundry-score/home').replace(
       queryParameters: {
         'regionCode': regionCode,
         'laundryTypeCode': laundryTypeCode,
@@ -84,25 +86,7 @@ class PpallaeApiClient {
       },
     );
     final json = await _getJson(uri);
-    return ScoreEnvelopeModel.fromJson(json as Map<String, dynamic>);
-  }
-
-  Future<TimelineEnvelopeModel> timeline({
-    required String regionCode,
-    required String laundryTypeCode,
-    required String dryingPlace,
-    required String laundryAmount,
-  }) async {
-    final uri = Uri.parse('$baseUrl/laundry-score/timeline').replace(
-      queryParameters: {
-        'regionCode': regionCode,
-        'laundryTypeCode': laundryTypeCode,
-        'dryingPlace': dryingPlace,
-        'laundryAmount': laundryAmount,
-      },
-    );
-    final json = await _getJson(uri);
-    return TimelineEnvelopeModel.fromJson(json as Map<String, dynamic>);
+    return HomeBundleModel.fromJson(json as Map<String, dynamic>);
   }
 
   // NOTE(2026-07-09): activeNotices 는 공지가 고객센터 웹으로 일원화되며 제거.

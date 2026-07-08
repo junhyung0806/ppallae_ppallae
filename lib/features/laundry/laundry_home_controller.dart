@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -233,9 +234,34 @@ class LaundryHomeController extends ChangeNotifier {
               e.toString())
           .log();
     }
-    // 앱 시작 시 현재 위치 자동 시도 (실패하면 기본 지역으로)
-    await useCurrentLocation(silent: true);
+    // 마지막 확정 지역 복원 → GPS(최대 ~25초)를 기다리지 않고 **즉시 점수 표시**.
+    // 위치는 병렬로 잡고, 지역이 바뀌면 그때 다시 갱신 (같으면 30분 캐시가 흡수).
+    await _loadSavedRegion();
+    unawaited(
+      useCurrentLocation(silent: true).then((_) => refresh()),
+    );
     await refresh();
+  }
+
+  /// 마지막 확정 지역(JSON) 복원. 있으면 그 지역으로 즉시 표시 (폴백 배너 없음 —
+  /// 사용자가 실제로 쓰던 지역이므로). 없으면 기본 지역 유지(폴백 배너 표시).
+  Future<void> _loadSavedRegion() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(kRegionJsonKey);
+      if (raw == null || raw.isEmpty) return;
+      _region =
+          RegionModel.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      _isUsingFallbackRegion = false;
+    } catch (e) {
+      PpallaeError(ErrorCodes.prfRead, '저장된 지역을 읽지 못했어요.', e.toString()).log();
+    }
+  }
+
+  /// 지역 확정 시 영속화 — 위젯 워커용 코드 + 앱 시작용 전체 JSON.
+  Future<void> _persistRegion(RegionModel region) async {
+    await _persistSelectorPref(kRegionCodeKey, region.admCode);
+    await _persistSelectorPref(kRegionJsonKey, jsonEncode(region.toJson()));
   }
 
   /// 빨래 종류 / 건조 장소 마지막 선택값 복원.
@@ -387,8 +413,8 @@ class LaundryHomeController extends ChangeNotifier {
     try {
       _region = await _api.currentRegion(_lat, _lng);
       _isUsingFallbackRegion = false;
-      // 위젯 백그라운드 워커가 같은 지역으로 점수를 재조회할 수 있게 저장.
-      await _persistSelectorPref(kRegionCodeKey, _region.admCode);
+      // 위젯 워커 + 다음 앱 시작 즉시표시용 영속화.
+      await _persistRegion(_region);
     } catch (e) {
       return PpallaeError(
         ErrorCodes.locRegionLookup,
@@ -428,7 +454,7 @@ class LaundryHomeController extends ChangeNotifier {
     try {
       _region = await _api.currentRegion(lat, lng);
       _isUsingFallbackRegion = false;
-      await _persistSelectorPref(kRegionCodeKey, _region.admCode);
+      await _persistRegion(_region);
     } catch (e) {
       final err = PpallaeError(
         ErrorCodes.locRegionLookup,
@@ -447,7 +473,7 @@ class LaundryHomeController extends ChangeNotifier {
     _lat = representative.lat;
     _lng = representative.lng;
     _isUsingFallbackRegion = false;
-    await _persistSelectorPref(kRegionCodeKey, region.admCode);
+    await _persistRegion(region);
     _locationNotice =
         '검색한 지역의 대표 좌표 기준으로 지도와 주변 빨래방을 표시합니다.';
     _laundromats = [];
@@ -536,39 +562,18 @@ class LaundryHomeController extends ChangeNotifier {
 
     try {
       // 빨래량(amount)은 사용자 노출 셀렉터 없이 항상 [kFixedLaundryAmount] 고정.
-      // score/timeline + outdoor/indoor 비교용 timeline 까지 병렬로 호출.
-      // 비교 칩이 사용자 선택과 무관하게 OUTDOOR/INDOOR 두 장소를 보여주므로
-      // 사용자 선택이 그 둘 중 하나여도 별도로 두 번 더 호출한다 (응답 가벼움).
-      final results = await Future.wait([
-        _api.currentScore(
-          regionCode: _region.admCode,
-          laundryTypeCode: _laundryTypeCode,
-          dryingPlace: _dryingPlace.code,
-          laundryAmount: kFixedLaundryAmount,
-        ),
-        _api.timeline(
-          regionCode: _region.admCode,
-          laundryTypeCode: _laundryTypeCode,
-          dryingPlace: _dryingPlace.code,
-          laundryAmount: kFixedLaundryAmount,
-        ),
-        _api.timeline(
-          regionCode: _region.admCode,
-          laundryTypeCode: _laundryTypeCode,
-          dryingPlace: DryingPlace.outdoor.code,
-          laundryAmount: kFixedLaundryAmount,
-        ),
-        _api.timeline(
-          regionCode: _region.admCode,
-          laundryTypeCode: _laundryTypeCode,
-          dryingPlace: DryingPlace.indoor.code,
-          laundryAmount: kFixedLaundryAmount,
-        ),
-      ]);
-      _scoreEnvelope = results[0] as ScoreEnvelopeModel;
-      _timeline = results[1] as TimelineEnvelopeModel;
-      _outdoorTimeline = results[2] as TimelineEnvelopeModel;
-      _indoorTimeline = results[3] as TimelineEnvelopeModel;
+      // 홈 번들 1콜 — current + 선택/실외/실내 timeline 을 서버가 묶어서 반환
+      // (기존 4콜 → 1콜: 왕복·rate limit 압력 감소).
+      final bundle = await _api.homeBundle(
+        regionCode: _region.admCode,
+        laundryTypeCode: _laundryTypeCode,
+        dryingPlace: _dryingPlace.code,
+        laundryAmount: kFixedLaundryAmount,
+      );
+      _scoreEnvelope = bundle.current;
+      _timeline = bundle.timeline;
+      _outdoorTimeline = bundle.outdoorTimeline;
+      _indoorTimeline = bundle.indoorTimeline;
       _lastRefreshedAt = DateTime.now();
       // 캐시에 저장 + 만료 항목 청소 (지역을 옮겨다녀도 무한히 안 쌓이게).
       _scoreCache[key] = _ScoreBundle(

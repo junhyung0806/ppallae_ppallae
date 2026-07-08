@@ -16,7 +16,13 @@ const String kLaundryTypeCodeKey = 'ppallae_laundry_type_code';
 const String kDryingPlaceKey = 'ppallae_drying_place';
 
 /// 마지막으로 확정된 지역(행정동) 코드. GPS/지도/검색으로 지역이 잡힐 때마다 저장.
+/// 위젯 백그라운드 워커가 사용.
 const String kRegionCodeKey = 'ppallae_region_code';
+
+/// 마지막 확정 지역의 전체 JSON (RegionModel.toJson).
+/// 앱 시작 시 GPS(최대 ~25초)를 기다리지 않고 이 지역으로 **즉시 점수를 표시**하고,
+/// 위치는 병렬로 잡히면 갱신한다 — 첫 화면 체감속도의 핵심.
+const String kRegionJsonKey = 'ppallae_region_json';
 
 /// 지역이 한 번도 확정된 적 없을 때의 폴백 (컨트롤러 기본 지역과 동일 — 서울 종로구 청운동).
 const String kDefaultRegionCode = '1111010100';

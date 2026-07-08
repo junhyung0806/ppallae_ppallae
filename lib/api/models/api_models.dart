@@ -3,14 +3,15 @@
 // NOTE(2026-07-09): NoticeModel 은 공지가 고객센터 웹으로 일원화되며 제거.
 
 /// `GET /app-config/public` 응답.
-/// 강제 업데이트, 점검 모드, 정책 URL, 피처 플래그를 한 번에 전달.
+/// 강제 업데이트, 점검 모드, 정책 URL을 한 번에 전달.
 /// 시작 시 1회 fetch 해 캐시하여 화면들이 참조.
+/// (featureFlags 는 앱에서 분기하는 곳이 없어 파싱 제거 — 2026-07-09.
+///  킬스위치가 필요해지면 백엔드 응답은 그대로이니 파싱만 되살리면 됨)
 class AppConfigModel {
   const AppConfigModel({
     required this.versions,
     required this.maintenance,
     required this.urls,
-    required this.featureFlags,
   });
 
   factory AppConfigModel.fromJson(Map<String, dynamic> json) {
@@ -21,15 +22,12 @@ class AppConfigModel {
           (json['maintenance'] as Map<String, dynamic>?) ?? const {}),
       urls:
           AppUrlsModel.fromJson((json['urls'] as Map<String, dynamic>?) ?? const {}),
-      featureFlags: ((json['featureFlags'] as Map<String, dynamic>?) ?? const {})
-          .map((k, v) => MapEntry(k, v as bool)),
     );
   }
 
   final AppVersionsModel versions;
   final AppMaintenanceModel maintenance;
   final AppUrlsModel urls;
-  final Map<String, bool> featureFlags;
 }
 
 class AppVersionsModel {
@@ -401,6 +399,35 @@ class TimelineEnvelopeModel {
 
   final String? bestStartTimeRange;
   final List<TimelineEntryModel> timeline;
+}
+
+/// `GET /laundry-score/home` 응답 — 홈 화면 번들 (4콜→1콜).
+/// current + 선택 장소 timeline + 실외/실내 비교용 timeline.
+class HomeBundleModel {
+  const HomeBundleModel({
+    required this.current,
+    required this.timeline,
+    required this.outdoorTimeline,
+    required this.indoorTimeline,
+  });
+
+  factory HomeBundleModel.fromJson(Map<String, dynamic> json) {
+    return HomeBundleModel(
+      current: ScoreEnvelopeModel.fromJson(
+          json['current'] as Map<String, dynamic>),
+      timeline: TimelineEnvelopeModel.fromJson(
+          json['timeline'] as Map<String, dynamic>),
+      outdoorTimeline: TimelineEnvelopeModel.fromJson(
+          json['outdoorTimeline'] as Map<String, dynamic>),
+      indoorTimeline: TimelineEnvelopeModel.fromJson(
+          json['indoorTimeline'] as Map<String, dynamic>),
+    );
+  }
+
+  final ScoreEnvelopeModel current;
+  final TimelineEnvelopeModel timeline;
+  final TimelineEnvelopeModel outdoorTimeline;
+  final TimelineEnvelopeModel indoorTimeline;
 }
 
 // NOTE(2026-07-06): Inquiry 모델은 고객센터 웹으로 일원화되며 앱에서 제거.

@@ -13,8 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class _FakeApiClient extends PpallaeApiClient {
   _FakeApiClient() : super(baseUrl: 'http://fake.test/api/v1');
 
-  int scoreCalls = 0;
-  int timelineCalls = 0;
+  int bundleCalls = 0;
   int laundromatCalls = 0;
 
   static const _score = LaundryScoreModel(
@@ -35,35 +34,31 @@ class _FakeApiClient extends PpallaeApiClient {
     skyCondition: 'CLEAR',
   );
 
-  @override
-  Future<ScoreEnvelopeModel> currentScore({
-    required String regionCode,
-    required String laundryTypeCode,
-    required String dryingPlace,
-    required String laundryAmount,
-  }) async {
-    scoreCalls++;
-    return ScoreEnvelopeModel(
-      regionDisplayName: '테스트 지역',
-      admCode: regionCode,
-      generatedAt: DateTime.now(),
-      sources: const ['test'],
-      stale: false,
-      weather: _weather,
-      score: _score,
-    );
-  }
+  static const _emptyTimeline =
+      TimelineEnvelopeModel(bestStartTimeRange: null, timeline: []);
 
   @override
-  Future<TimelineEnvelopeModel> timeline({
+  Future<HomeBundleModel> homeBundle({
     required String regionCode,
     required String laundryTypeCode,
     required String dryingPlace,
     required String laundryAmount,
   }) async {
-    timelineCalls++;
-    return const TimelineEnvelopeModel(
-        bestStartTimeRange: null, timeline: []);
+    bundleCalls++;
+    return HomeBundleModel(
+      current: ScoreEnvelopeModel(
+        regionDisplayName: '테스트 지역',
+        admCode: regionCode,
+        generatedAt: DateTime.now(),
+        sources: const ['test'],
+        stale: false,
+        weather: _weather,
+        score: _score,
+      ),
+      timeline: _emptyTimeline,
+      outdoorTimeline: _emptyTimeline,
+      indoorTimeline: _emptyTimeline,
+    );
   }
 
   @override
@@ -212,23 +207,22 @@ void main() {
       final fake = _FakeApiClient();
       final controller = LaundryHomeController(apiClient: fake);
 
-      await controller.refresh(); // 최초 → 실제 호출
-      expect(fake.scoreCalls, 1);
-      expect(fake.timelineCalls, 3); // 선택+실외비교+실내비교
+      await controller.refresh(); // 최초 → 번들 1콜
+      expect(fake.bundleCalls, 1);
       expect(fake.laundromatCalls, 1);
 
       await controller.refresh(); // 같은 조합 → 캐시 히트, 호출 없음
-      expect(fake.scoreCalls, 1);
+      expect(fake.bundleCalls, 1);
       expect(fake.laundromatCalls, 1); // 빨래방도 재호출 없음
 
       await controller.selectDryingPlace(DryingPlace.indoor); // 새 조합
-      expect(fake.scoreCalls, 2);
+      expect(fake.bundleCalls, 2);
 
       await controller.selectDryingPlace(DryingPlace.outdoor); // 이전 조합 → 캐시
-      expect(fake.scoreCalls, 2);
+      expect(fake.bundleCalls, 2);
 
       await controller.refresh(force: true); // 당겨서 새로고침 → 캐시 무시
-      expect(fake.scoreCalls, 3);
+      expect(fake.bundleCalls, 3);
     });
   });
 }
