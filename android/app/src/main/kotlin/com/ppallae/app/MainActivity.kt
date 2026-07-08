@@ -1,4 +1,4 @@
-package com.example.ppallae_ppallae
+package com.ppallae.app
 
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName

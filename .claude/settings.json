@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Read(//c/Users/asdfc/**)",
-      "Bash(grep -iE \"\\\\.\\(py|ts|js|yaml|yml|json|md\\)$\")"
+      "Bash(grep -iE \"\\\\.\\(py|ts|js|yaml|yml|json|md\\)$\")",
+      "Bash(gh auth *)"
     ]
   }
 }

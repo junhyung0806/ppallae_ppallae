@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -5,8 +7,15 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// release 서명 정보 — android/key.properties (gitignore, 로컬 전용).
+// keystore: %USERPROFILE%\ppallae-release.jks (분실 시 앱 업데이트 영구 불가 — 반드시 백업)
+val keystoreProperties = Properties().apply {
+    val f = rootProject.file("key.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+
 android {
-    namespace = "com.example.ppallae_ppallae"
+    namespace = "com.ppallae.app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -20,12 +29,9 @@ android {
     }
 
     defaultConfig {
-        // TODO(release-blocker): applicationId 미정 — Play Console 업로드 후에는 변경 불가.
-        //   현재 값 "com.example.*" 는 Play 정책상 거부될 수 있는 placeholder.
-        //   namespace (위 line 9) 도 같은 값으로 함께 변경할 것.
-        //   변경 시 android/app/src/main/kotlin 하위 패키지 디렉토리/Kotlin 파일의
-        //   package 선언, AndroidManifest.xml 의 component 참조도 함께 옮겨야 함.
-        applicationId = "com.example.ppallae_ppallae"
+        // applicationId 확정: com.ppallae.app (2026-07-09 사용자 결정).
+        // Play Console 업로드 후에는 영구 변경 불가.
+        applicationId = "com.ppallae.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -34,17 +40,27 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            // key.properties 없으면(예: CI 초기) null → 아래에서 debug 폴백.
+            val storePath = keystoreProperties.getProperty("storeFile")
+            if (storePath != null) {
+                storeFile = file(storePath)
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO(release-blocker): release 빌드를 debug 키로 서명 중 → Play 업로드 거부됨.
-            //   1) `keytool -genkey -v -keystore ~/ppallae-release.jks ...` 로 keystore 생성
-            //   2) android/key.properties 만들고 (gitignore 처리) storeFile/storePassword/keyAlias/keyPassword 기입
-            //   3) 본 블록을 release signingConfig 로 교체. 예:
-            //      val keystoreProperties = Properties().apply { load(rootProject.file("key.properties").inputStream()) }
-            //      signingConfigs.create("release") { storeFile = file(keystoreProperties["storeFile"]); ... }
-            //      buildTypes.release.signingConfig = signingConfigs.getByName("release")
-            //   4) Play Console 의 Play App Signing 도 함께 설정.
-            signingConfig = signingConfigs.getByName("debug")
+            // release 서명 (2026-07-09 keystore 생성). key.properties 부재 시에만
+            // debug 폴백 — 로컬 사고 방지용이며 Play 업로드는 release 서명 필수.
+            signingConfig =
+                if (keystoreProperties.getProperty("storeFile") != null)
+                    signingConfigs.getByName("release")
+                else signingConfigs.getByName("debug")
         }
     }
 }
