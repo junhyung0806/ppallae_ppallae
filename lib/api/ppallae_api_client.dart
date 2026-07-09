@@ -163,3 +163,37 @@ class PpallaeApiClient {
 
   void dispose() => _http.close();
 }
+
+/// 크래시/에러 리포트 전송 (fire-and-forget).
+///
+/// crash_report.dart 의 전역 핸들러가 호출한다. **어떤 경우에도 예외를 던지지
+/// 않는다** — 리포터가 다시 예외를 내면 무한 루프가 되기 때문. 응답도 안 본다.
+Future<void> sendClientErrorReport({
+  required String code,
+  required String message,
+  String? stack,
+  String? appVersion,
+  String? platform,
+}) async {
+  try {
+    await http
+        .post(
+          Uri.parse(
+              '${const String.fromEnvironment('PPALLAE_API_BASE_URL', defaultValue: 'http://localhost:4000/api/v1')}/client-errors'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'code': code,
+            'message':
+                message.length > 2000 ? message.substring(0, 2000) : message,
+            'stack': ?(stack != null && stack.length > 8000
+                ? stack.substring(0, 8000)
+                : stack),
+            'appVersion': ?appVersion,
+            'platform': ?platform,
+          }),
+        )
+        .timeout(const Duration(seconds: 5));
+  } catch (_) {
+    // 조용히 무시 — 오프라인/서버다운이어도 앱 동작에 영향 없어야 한다.
+  }
+}

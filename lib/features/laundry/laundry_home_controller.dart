@@ -133,6 +133,18 @@ class LaundryHomeController extends ChangeNotifier {
     return DateTime.now().difference(last) > threshold;
   }
 
+  /// 날씨 데이터가 mock(백엔드 외부 API 키 부재/강제 목업)인지.
+  /// true 면 홈에 "점검 중" 배너를 띄워 가짜 데이터가 진짜처럼 보이는 것을 막는다.
+  bool get isMockData =>
+      _scoreEnvelope?.sources.any((s) => s.contains('mock')) ?? false;
+
+  /// 현재 표시 중인 데이터가 오프라인 스냅샷(마지막 성공 응답)인지.
+  bool get isOfflineData => _isOfflineData;
+  bool _isOfflineData = false;
+
+  /// 오프라인 스냅샷의 저장 시각 (배너 "HH:mm 기준" 표기용).
+  DateTime? get offlineDataAt => _isOfflineData ? _lastRefreshedAt : null;
+
   // ── 추천 시간: 오늘 기준 (현재 시각 ~ 오늘 KST 자정) ──
   //
   // 점수 카드의 큰 숫자/등급/건조시간/추천 시간 박스는 모두 timeline 의 오늘
@@ -262,6 +274,52 @@ class LaundryHomeController extends ChangeNotifier {
   Future<void> _persistRegion(RegionModel region) async {
     await _persistSelectorPref(kRegionCodeKey, region.admCode);
     await _persistSelectorPref(kRegionJsonKey, jsonEncode(region.toJson()));
+  }
+
+  /// 마지막 성공 번들을 디스크에 스냅샷 (오프라인 폴백용).
+  /// 원본 응답 JSON 을 그대로 저장 — 모델별 toJson 불필요.
+  Future<void> _persistLastBundle(String comboKey, HomeBundleModel b) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        kLastBundleKey,
+        jsonEncode({
+          'combo': comboKey,
+          'fetchedAt': DateTime.now().toIso8601String(),
+          'bundle': b.rawJson,
+        }),
+      );
+    } catch (e) {
+      PpallaeError(ErrorCodes.prfWrite, '오프라인 스냅샷 저장 실패.', e.toString())
+          .log();
+    }
+  }
+
+  /// 네트워크 실패 시 디스크 스냅샷 복원. 같은 조합(combo)일 때만 사용
+  /// (다른 종류/장소의 점수를 보여주면 오해). 성공 시 true.
+  Future<bool> _loadLastBundle(String comboKey) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(kLastBundleKey);
+      if (raw == null || raw.isEmpty) return false;
+      final saved = jsonDecode(raw) as Map<String, dynamic>;
+      if (saved['combo'] != comboKey) return false;
+      final bundle = HomeBundleModel.fromJson(
+          saved['bundle'] as Map<String, dynamic>);
+      _scoreEnvelope = bundle.current;
+      _timeline = bundle.timeline;
+      _outdoorTimeline = bundle.outdoorTimeline;
+      _indoorTimeline = bundle.indoorTimeline;
+      _lastRefreshedAt =
+          DateTime.tryParse(saved['fetchedAt'] as String? ?? '') ??
+              DateTime.now();
+      _isOfflineData = true;
+      return true;
+    } catch (e) {
+      PpallaeError(ErrorCodes.prfRead, '오프라인 스냅샷 복원 실패.', e.toString())
+          .log();
+      return false;
+    }
   }
 
   /// 빨래 종류 / 건조 장소 마지막 선택값 복원.
@@ -575,6 +633,9 @@ class LaundryHomeController extends ChangeNotifier {
       _outdoorTimeline = bundle.outdoorTimeline;
       _indoorTimeline = bundle.indoorTimeline;
       _lastRefreshedAt = DateTime.now();
+      _isOfflineData = false;
+      // 오프라인 대비 디스크 스냅샷 (fire-and-forget).
+      unawaited(_persistLastBundle(key, bundle));
       // 캐시에 저장 + 만료 항목 청소 (지역을 옮겨다녀도 무한히 안 쌓이게).
       _scoreCache[key] = _ScoreBundle(
         score: _scoreEnvelope!,
@@ -595,7 +656,12 @@ class LaundryHomeController extends ChangeNotifier {
       }
     } on PpallaeApiException catch (e) {
       debugPrint('PpallaeError $e');
-      _error = e.toString(); // [API-xxx] message 형태로 코드 노출
+      // 네트워크 실패 + 보여줄 데이터가 없으면 → 오프라인 스냅샷 폴백.
+      if (_scoreEnvelope == null && await _loadLastBundle(key)) {
+        _error = null; // 스냅샷으로 화면 유지, 배너로 오프라인임을 알림
+      } else {
+        _error = e.toString(); // [API-xxx] message 형태로 코드 노출
+      }
     } catch (e) {
       _error = '알 수 없는 오류: $e';
     } finally {

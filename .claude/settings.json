@@ -11,10 +11,21 @@
       "Bash(curl -s -m 20 \"http://localhost:4000/api/v1/laundry-score/home?regionCode=1111010100&laundryTypeCode=LIGHT&dryingPlace=OUTDOOR&laundryAmount=MEDIUM\")",
       "Bash(python -c ' *)",
       "Bash(curl -s -m 10 -o /dev/null -w \"  POST /estimate → HTTP %{http_code}\\\\n\" -X POST http://localhost:4000/api/v1/laundry-score/estimate -H \"Content-Type: application/json\" -d '{}')",
-      "Bash(docker exec *)"
+      "Bash(docker exec *)",
+      "PowerShell($adb = \"$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; & $adb devices | Select-String \"device$\" | Out-Null; if \\($?\\) { & $adb reverse tcp:4000 tcp:4000 | Out-Null; Set-Location C:\\\\Users\\\\asdfc\\\\ppallae_ppallae; flutter build apk --release --dart-define=PPALLAE_API_BASE_URL=http://localhost:4000/api/v1 2>&1 | Select-Object -Last 2; & $adb install -r build\\\\app\\\\outputs\\\\flutter-apk\\\\app-release.apk 2>&1 | Select-Object -Last 1 } else { \"폰 미연결 — 빌드만\" })",
+      "Bash(curl -s -m 5 -o /dev/null -w \"health: %{http_code}\\\\n\" http://localhost:4000/api/v1/health)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} \" -m 5 -X POST http://localhost:4000/api/v1/client-errors -H \"Content-Type: application/json\" -d '{\"message\":\"live verify\",\"platform\":\"test\"}')"
     ],
     "additionalDirectories": [
-      "C:\\Users\\asdfc\\ppallae_ppallae_customer_web"
+      "C:\\Users\\asdfc\\ppallae_ppallae_customer_web",
+      "C:\\Users\\asdfc\\ppallae_ppallae_api_server\\src\\modules\\data-ingestion",
+      "C:\\Users\\asdfc\\ppallae_ppallae_api_server\\prisma",
+      "C:\\Users\\asdfc\\ppallae_ppallae_api_server\\src\\modules\\inquiries",
+      "C:\\Users\\asdfc\\ppallae_ppallae_api_server\\src\\modules\\admin",
+      "C:\\Users\\asdfc\\ppallae_ppallae_api_server\\src\\modules\\client-logs",
+      "C:\\Users\\asdfc\\ppallae_ppallae_api_server\\src",
+      "C:\\Users\\asdfc\\ppallae_ppallae_admin_web\\app\\dashboard\\tabs",
+      "C:\\Users\\asdfc\\ppallae_ppallae_admin_web\\lib"
     ]
   }
 }

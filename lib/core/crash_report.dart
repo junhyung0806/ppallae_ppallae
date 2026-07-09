@@ -1,13 +1,20 @@
 import 'package:flutter/foundation.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+
+import '../api/ppallae_api_client.dart' show sendClientErrorReport;
 
 /// 전역 미처리 예외 수집 지점.
 ///
-/// 현재는 로그 출력만 한다 — 출시 결정(2026-06-01)대로 Firebase Crashlytics 를
-/// 통합하면 이 함수 본문만 `FirebaseCrashlytics.instance.recordError(...)` 로
-/// 바꾸면 되도록 앱의 모든 미처리 예외가 이 한 곳을 지나게 해뒀다.
+/// 로그 출력 + (release 빌드에서만) 백엔드 `/client-errors` 로 전송 —
+/// Crashlytics 도입 전까지의 최소 크래시 가시성. 도입 시 이 파일 본문만
+/// `FirebaseCrashlytics.instance.recordError(...)` 로 교체하면 된다.
 /// (연결: [installGlobalErrorHandlers] — main.dart 에서 runApp 전에 설치)
-///
-/// TODO(release): Crashlytics 통합 시 recordError 호출로 교체.
+
+/// 세션당 전송 상한 — 크래시 루프가 서버를 두드리는 것 방지.
+const int _kMaxReportsPerSession = 5;
+int _sentThisSession = 0;
+String? _cachedAppVersion;
+
 void reportUncaughtError(Object error, StackTrace? stack) {
   // release 빌드에서도 최소한 콘솔(logcat)에는 남긴다.
   // ignore: avoid_print
@@ -16,6 +23,28 @@ void reportUncaughtError(Object error, StackTrace? stack) {
     // ignore: avoid_print
     print(stack);
   }
+
+  // 백엔드 전송은 release 만 (디버그 개발 소음이 DB 에 쌓이는 것 방지).
+  if (!kReleaseMode) return;
+  if (_sentThisSession >= _kMaxReportsPerSession) return;
+  _sentThisSession++;
+  // fire-and-forget — sendClientErrorReport 는 어떤 경우에도 던지지 않는다.
+  _send(error, stack);
+}
+
+Future<void> _send(Object error, StackTrace? stack) async {
+  try {
+    _cachedAppVersion ??= (await PackageInfo.fromPlatform()).version;
+  } catch (_) {
+    // 버전 조회 실패해도 리포트는 보낸다.
+  }
+  await sendClientErrorReport(
+    code: 'GEN-001',
+    message: error.toString(),
+    stack: stack?.toString(),
+    appVersion: _cachedAppVersion,
+    platform: defaultTargetPlatform.name,
+  );
 }
 
 /// Flutter 프레임워크 예외 + 플랫폼(async) 미처리 예외를 전역으로 수집.

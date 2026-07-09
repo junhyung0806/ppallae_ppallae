@@ -27,6 +27,10 @@ const String kRegionJsonKey = 'ppallae_region_json';
 /// 지역이 한 번도 확정된 적 없을 때의 폴백 (컨트롤러 기본 지역과 동일 — 서울 종로구 청운동).
 const String kDefaultRegionCode = '1111010100';
 
+/// 마지막 성공 응답의 오프라인 스냅샷 (JSON: {combo, fetchedAt, bundle}).
+/// 네트워크 실패 시 빈 화면 대신 "HH:mm 기준 마지막 정보"를 보여준다.
+const String kLastBundleKey = 'ppallae_last_bundle';
+
 /// 사용자가 동의한 약관 버전. 저장된 값 ≥ [kCurrentConsentVersion] 이면 동의 완료로 본다.
 /// 약관 내용이 실질적으로 바뀌면 [kCurrentConsentVersion] 을 올려 재동의를 유도한다.
 const String kConsentVersionKey = 'ppallae_consent_version';

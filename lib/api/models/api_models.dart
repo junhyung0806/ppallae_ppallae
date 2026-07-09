@@ -409,6 +409,7 @@ class HomeBundleModel {
     required this.timeline,
     required this.outdoorTimeline,
     required this.indoorTimeline,
+    this.rawJson = const {},
   });
 
   factory HomeBundleModel.fromJson(Map<String, dynamic> json) {
@@ -421,6 +422,7 @@ class HomeBundleModel {
           json['outdoorTimeline'] as Map<String, dynamic>),
       indoorTimeline: TimelineEnvelopeModel.fromJson(
           json['indoorTimeline'] as Map<String, dynamic>),
+      rawJson: json,
     );
   }
 
@@ -428,6 +430,10 @@ class HomeBundleModel {
   final TimelineEnvelopeModel timeline;
   final TimelineEnvelopeModel outdoorTimeline;
   final TimelineEnvelopeModel indoorTimeline;
+
+  /// 원본 응답 JSON — 오프라인 캐시(디스크 영속화) 재직렬화용.
+  /// 모델별 toJson 을 전부 만드는 대신 원문을 그대로 보관한다.
+  final Map<String, dynamic> rawJson;
 }
 
 // NOTE(2026-07-06): Inquiry 모델은 고객센터 웹으로 일원화되며 앱에서 제거.

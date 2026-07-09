@@ -64,6 +64,26 @@ class LaundryHomeScreen extends StatelessWidget {
                     const SizedBox(height: 10),
                     _LocationNoticeBanner(controller: _controller),
                   ],
+                  // 백엔드가 mock 데이터로 폴백 중(외부 API 키 부재 등) —
+                  // 가짜 날씨가 진짜처럼 보이지 않게 "점검 중"으로 안내.
+                  if (_controller.isMockData) ...[
+                    const SizedBox(height: 10),
+                    const _StatusBanner(
+                      icon: Icons.build_circle_outlined,
+                      color: Color(0xFFD9822B),
+                      text: '날씨 데이터 점검 중이에요. 표시된 정보가 실제와 다를 수 있어요.',
+                    ),
+                  ],
+                  // 오프라인 스냅샷 표시 중 — 마지막 성공 데이터임을 명시.
+                  if (_controller.isOfflineData) ...[
+                    const SizedBox(height: 10),
+                    _StatusBanner(
+                      icon: Icons.wifi_off_outlined,
+                      color: const Color(0xFF7A8699),
+                      text:
+                          '오프라인 — ${_formatOfflineAt(_controller.offlineDataAt)} 기준 마지막 정보예요. 연결되면 아래로 당겨 새로고침하세요.',
+                    ),
+                  ],
                   const SizedBox(height: 14),
                   if (_controller.error != null)
                     _ErrorCard(
@@ -702,6 +722,51 @@ class _LaundromatList extends StatelessWidget {
 /// 오늘 추천 시각 박스 시작 시각 + 45분(세탁) hangAt 으로 "HH:MM ~ HH:MM" 라벨 생성.
 /// 백엔드 timeline entry 에는 hangAt 이 없어 클라이언트에서 +45분 추정. 백엔드의
 /// `formatStartRange` 와 동일 식.
+/// 오프라인 스냅샷 시각 라벨 (KST HH:mm).
+String _formatOfflineAt(DateTime? at) => at == null ? '이전' : formatKstHm(at);
+
+/// 상단 상태 배너 (점검 중 / 오프라인 등) — 홈 배너 공통 스타일.
+class _StatusBanner extends StatelessWidget {
+  const _StatusBanner({
+    required this.icon,
+    required this.color,
+    required this.text,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.35,
+                color: color,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 String _formatTodayRecoRange(DateTime start) {
   final hang = start.add(const Duration(minutes: 45));
   return '${formatKstHm(start)} ~ ${formatKstHm(hang)}';
