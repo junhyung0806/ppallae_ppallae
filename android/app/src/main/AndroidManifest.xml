@@ -7,8 +7,9 @@
         android:label="빨래빨래"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true">
-        <!-- usesCleartextTraffic: 개발 중 로컬 HTTP 백엔드 연결용. 운영 배포 시 HTTPS로 전환하고 제거 권장 -->
+        android:networkSecurityConfig="@xml/network_security_config">
+        <!-- 평문(HTTP)은 network_security_config 에서 localhost/에뮬레이터만 허용.
+             운영(HTTPS)은 cleartext 금지 기본 정책 적용 — 전역 usesCleartextTraffic 제거됨 -->
 
         <activity
             android:name=".MainActivity"

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  네트워크 보안 정책: 평문(HTTP)은 로컬 개발 주소에만 허용.
+  - localhost/127.0.0.1: adb reverse 로 폰→PC 백엔드(4000) 터널링할 때 사용
+  - 10.0.2.2: Android 에뮬레이터에서 호스트 PC를 가리키는 주소
+  운영 API(HTTPS)는 기본 정책(cleartext 금지)을 그대로 따른다.
+  PC LAN IP(192.168.x.x)로 직접 붙어 테스트하려면 여기 임시로 도메인을 추가할 것.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>
