@@ -4,7 +4,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../api/models/api_models.dart';
 import '../../core/ppallae_native.dart';
-import 'data_source_screen.dart';
 import 'laundry_home_controller.dart';
 import 'region_search_screen.dart';
 import 'score_criteria_screen.dart';
@@ -199,27 +198,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                 ),
-                ListTile(
-                  leading: const Icon(Icons.source_outlined),
-                  title: const Text('데이터 출처'),
-                  subtitle: const Text('기상청 · 에어코리아 · 카카오'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const DataSourceScreen(),
-                    ),
-                  ),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.code_outlined),
-                  title: const Text('오픈소스 라이선스'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => showLicensePage(
-                    context: context,
-                    applicationName: '빨래빨래',
-                    applicationLegalese: '© ppallae',
-                  ),
-                ),
+                // NOTE(2026-07-10): 데이터 출처·오픈소스 타일 제거 — 고객센터 웹
+                // (/data-source, /opensource)으로 일원화. 겹치는 정보는 앱에 두지
+                // 않는다(제품 결정). Play 심사에서 인앱 라이선스 고지를 요구하면
+                // showLicensePage 한 줄로 복원 가능.
                 const ListTile(
                   leading: Icon(Icons.lock_outline),
                   title: Text('위치 정보'),
