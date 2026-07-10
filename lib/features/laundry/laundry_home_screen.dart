@@ -854,90 +854,8 @@ class _ScoreInfoRow extends StatelessWidget {
   }
 }
 
-/// 같은 날씨 조건에서 실외/실내 점수를 나란히 비교.
-/// 점수 카드의 큰 숫자(overallScore)는 사용자가 고른 건조 장소 기반이므로,
-/// 다른 장소를 골랐을 때 얼마나 달라지는지 한눈에 보이게 한다.
-class _IndoorOutdoorRow extends StatelessWidget {
-  const _IndoorOutdoorRow({
-    required this.outdoorScore,
-    required this.indoorScore,
-  });
-
-  final int outdoorScore;
-  final int indoorScore;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _CompareChip(
-            icon: Icons.wb_sunny_outlined,
-            label: '실외',
-            score: outdoorScore,
-          ),
-        ),
-        const SizedBox(width: 6),
-        Expanded(
-          child: _CompareChip(
-            icon: Icons.home_outlined,
-            label: '실내',
-            score: indoorScore,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _CompareChip extends StatelessWidget {
-  const _CompareChip({
-    required this.icon,
-    required this.label,
-    required this.score,
-  });
-
-  final IconData icon;
-  final String label;
-  final int score;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = _gradeColor(gradeFromScore(score));
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.25)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 11,
-              color: Colors.black54,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            '$score',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w800,
-              color: color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+// NOTE(2026-07-10): _IndoorOutdoorRow/_CompareChip(실외·실내 비교) 제거 —
+// 건조장소 셀렉터와 중복 정보라 카드에서 뺐다 (제품 결정: 최대한 심플).
 
 class _ScoreCard extends StatelessWidget {
   const _ScoreCard({required this.controller});
@@ -955,11 +873,12 @@ class _ScoreCard extends StatelessWidget {
       );
     }
 
-    // 점수 카드는 "featured 후보" 기준 — 오늘이 빨래할 만하면(≥NORMAL) 오늘,
-    // 아니면(밤/비 등) 다음 좋은 시간대(내일 아침 등)로 롤오버. 오늘 후보가
-    // 아예 없으면 envelope.score(글로벌 best) 로 폴백.
-    final featured = controller.featuredEntry;
-    final dayOffset = controller.featuredDayOffset;
+    // 제품 결정(2026-07-10): 카드는 **오늘(00~24) 기준**. 오늘 중 추천할 만한
+    // 시간이 없으면 백엔드가 recommendTomorrow 를 내려주고, 이때는 내일 시각으로
+    // 롤오버하지 않고 오늘 점수 그대로 + 등급 라벨 자리에 "내일 추천"만 표시한다.
+    final recommendTomorrow = envelope.score.recommendTomorrow;
+    final featured = recommendTomorrow ? null : controller.featuredEntry;
+    final dayOffset = recommendTomorrow ? 0 : controller.featuredDayOffset;
     final dayLabel = dayOffsetLabel(dayOffset); // '' | 내일 | 모레 …
     final loading = controller.loading;
 
@@ -1034,12 +953,13 @@ class _ScoreCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 보조 라벨: 큰 숫자가 "지금 점수"가 아니라
-                    // "30시간 안 최적 시점의 점수"임을 명시.
+                    // 보조 라벨: 큰 숫자가 어느 시점 점수인지 명시.
                     Text(
-                      hasRecommendation
-                          ? '추천 시점 기준 점수'
-                          : '오늘 최고 기준 점수',
+                      recommendTomorrow
+                          ? '오늘 기준 점수'
+                          : (hasRecommendation
+                              ? '추천 시점 기준 점수'
+                              : '오늘 최고 기준 점수'),
                       style: const TextStyle(
                         fontSize: 11,
                         color: Colors.black45,
@@ -1052,7 +972,9 @@ class _ScoreCard extends StatelessWidget {
                       textBaseline: TextBaseline.alphabetic,
                       children: [
                         Text(
-                          gradeLabel(grade),
+                          // 오늘 안에 추천 시간이 없으면 등급 대신 "내일 추천"
+                          // (색/폰트는 등급 스타일 그대로 — 제품 결정).
+                          recommendTomorrow ? '내일 추천' : gradeLabel(grade),
                           style: TextStyle(
                             color: color,
                             fontSize: 22,
@@ -1085,34 +1007,30 @@ class _ScoreCard extends StatelessWidget {
               ),
             ],
           ),
-          // ── 추천 빨래 시간 ──
-          // featured 시각. 오늘이 가망 없으면 "내일 10:00 ~ …" 처럼 day 접두가 붙는다.
-          const SizedBox(height: 14),
-          _ScoreInfoRow(
-            label: '추천 시간',
-            value: range,
-            valueColor: color,
-            bgColor: color.withValues(alpha: 0.08),
-            // range 에 "내일"이 이미 포함되므로 tail 배지는 중복 — 미표시.
-            tailLabel: null,
-          ),
-          // ── 예상 건조 시간 (+ 완료 시각) ──
-          const SizedBox(height: 8),
-          _ScoreInfoRow(
-            label: '예상 건조 시간',
-            value: _formatDryTime(dryMin, dryMax),
-            valueColor: color,
-            bgColor: color.withValues(alpha: 0.08),
-            tailLabel: completionLabel, // 예: "12:31 완료"
-          ),
-          // ── 실외 vs 실내 점수 비교 (featured 시점 기준) ──
-          const SizedBox(height: 8),
-          _IndoorOutdoorRow(
-            outdoorScore: controller.featuredOutdoor?.overallScore ??
-                envelope.score.outdoorScore,
-            indoorScore: controller.featuredIndoor?.overallScore ??
-                envelope.score.indoorScore,
-          ),
+          // ── 추천 빨래 시간 / 예상 건조 시간 ──
+          // "내일 추천"일 땐 오늘 기준 세부 시각이 무의미하므로 행을 숨긴다
+          // (제품 결정: 오늘 00~24 집중, 내일의 구체 시각은 표시하지 않음).
+          if (!recommendTomorrow) ...[
+            const SizedBox(height: 14),
+            _ScoreInfoRow(
+              label: '추천 시간',
+              value: range,
+              valueColor: color,
+              bgColor: color.withValues(alpha: 0.08),
+              // range 에 "내일"이 이미 포함되므로 tail 배지는 중복 — 미표시.
+              tailLabel: null,
+            ),
+            const SizedBox(height: 8),
+            _ScoreInfoRow(
+              label: '예상 건조 시간',
+              value: _formatDryTime(dryMin, dryMax),
+              valueColor: color,
+              bgColor: color.withValues(alpha: 0.08),
+              tailLabel: completionLabel, // 예: "12:31 완료"
+            ),
+          ],
+          // NOTE(2026-07-10): 실외/실내 비교 행 제거 — 건조장소 셀렉터가 이미
+          // 있어 중복 정보였음 (제품 결정: 카드는 최대한 심플).
           if (envelope.score.warningTexts.isNotEmpty) ...[
             const SizedBox(height: 8),
             ...envelope.score.warningTexts.map(

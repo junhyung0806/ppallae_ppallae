@@ -39,14 +39,17 @@ class WidgetService {
     // (`region`/`grade`(label)/`updatedAt`/`currentDate`/`currentTime` 은
     // 과거 디자인 잔재로 죽은 저장이라 제거.)
     //
-    // 점수/등급/추천 시각은 featured 후보 기준 (오늘이 가망 없으면 내일 아침 등으로 롤오버).
-    // featured 가 없으면 score envelope 의 글로벌 best 로 폴백.
+    // 제품 결정(2026-07-10): 위젯도 **오늘 기준**. 오늘 안에 추천 시간이 없으면
+    // (recommendTomorrow) 내일 시각으로 롤오버하지 않고 오늘 점수 그대로 +
+    // 등급 라벨 자리에 "내일추천" 을 표시한다 (색/레이아웃은 등급 스타일 유지).
+    final recommendTomorrow = envelope.score.recommendTomorrow;
+    final effFeatured = recommendTomorrow ? null : featured;
     try {
       final int overallScore =
-          featured?.overallScore ?? envelope.score.overallScore;
+          effFeatured?.overallScore ?? envelope.score.overallScore;
       final String serverGrade =
-          (featured?.grade.isNotEmpty ?? false)
-              ? featured!.grade
+          (effFeatured?.grade.isNotEmpty ?? false)
+              ? effFeatured!.grade
               : envelope.score.grade;
       final grade = serverGrade.isNotEmpty
           ? serverGrade
@@ -60,10 +63,21 @@ class WidgetService {
       }
       await HomeWidget.saveWidgetData<String>('score', '$overallScore');
       await HomeWidget.saveWidgetData<String>('gradeCode', grade);
-      // recoStart 에 day 접두("내일") 포함 → 위젯 "추천 시간 : 내일 10:00 ~ 10:45".
-      final (recoStart, recoEnd) = _recoFromFeatured(featured, dayOffset);
-      await HomeWidget.saveWidgetData<String>('recoStart', recoStart);
-      await HomeWidget.saveWidgetData<String>('recoEnd', recoEnd);
+      // Kotlin Provider 가 '1' 이면 등급 라벨 대신 "내일추천" 을 렌더.
+      await HomeWidget.saveWidgetData<String>(
+        'tomorrow',
+        recommendTomorrow ? '1' : '',
+      );
+      if (recommendTomorrow) {
+        // 내일의 구체 시각은 표시하지 않음 → "추천 시간 : 내일"
+        await HomeWidget.saveWidgetData<String>('recoStart', '내일');
+        await HomeWidget.saveWidgetData<String>('recoEnd', '');
+      } else {
+        // recoStart 에 day 접두("내일") 포함 → 위젯 "추천 시간 : 내일 10:00 ~ 10:45".
+        final (recoStart, recoEnd) = _recoFromFeatured(effFeatured, dayOffset);
+        await HomeWidget.saveWidgetData<String>('recoStart', recoStart);
+        await HomeWidget.saveWidgetData<String>('recoEnd', recoEnd);
+      }
       // 갱신 시각(신선도) — 위젯이 "n분 전" 을 렌더하고, 오래되면(예: 3h+)
       // 회색 처리해 stale 데이터를 사용자가 눈치채게 한다. epoch millis(UTC).
       await HomeWidget.saveWidgetData<String>(
@@ -100,6 +114,7 @@ class WidgetService {
     try {
       await HomeWidget.saveWidgetData<String>('score', '–');
       await HomeWidget.saveWidgetData<String>('gradeCode', '');
+      await HomeWidget.saveWidgetData<String>('tomorrow', '');
       await HomeWidget.saveWidgetData<String>('recoStart', '꺼짐');
       await HomeWidget.saveWidgetData<String>('recoEnd', '');
       // 비활성 시엔 갱신 시각을 비워 위젯이 "n분 전" 을 숨기도록.

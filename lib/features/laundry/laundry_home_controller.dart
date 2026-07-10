@@ -69,10 +69,8 @@ class LaundryHomeController extends ChangeNotifier {
 
   ScoreEnvelopeModel? _scoreEnvelope;
   TimelineEnvelopeModel? _timeline;
-  /// 실외 기준 timeline (비교 칩용). 사용자 선택과 무관하게 항상 fetch.
-  TimelineEnvelopeModel? _outdoorTimeline;
-  /// 실내 기준 timeline (비교 칩용). 사용자 선택과 무관하게 항상 fetch.
-  TimelineEnvelopeModel? _indoorTimeline;
+  // NOTE(2026-07-10): 실외/실내 비교용 outdoor/indoor timeline 제거 —
+  // 비교 칩이 카드에서 빠지면서(제품 결정) 소비처가 사라짐. 번들도 축소.
   List<LaundromatModel> _laundromats = [];
   /// 마지막 빨래방 응답이 mock/fallback이면 true. UI에 명시 표시.
   bool _laundromatsIsMock = false;
@@ -159,12 +157,6 @@ class LaundryHomeController extends ChangeNotifier {
   /// 사용자 선택 dryingPlace 기준 오늘 최적 후보. 카드 큰 숫자/추천 박스의 원천.
   TimelineEntryModel? get todayBestEntry => todayBestOf(_timeline);
 
-  /// 실외 기준 오늘 최적 후보. 비교 칩 OUTDOOR 점수 원천.
-  TimelineEntryModel? get todayBestOutdoor => todayBestOf(_outdoorTimeline);
-
-  /// 실내 기준 오늘 최적 후보. 비교 칩 INDOOR 점수 원천.
-  TimelineEntryModel? get todayBestIndoor => todayBestOf(_indoorTimeline);
-
   /// 오늘 최적 점수가 60 미만이거나 오늘 후보 자체가 없으면 true.
   /// 박스 옆에 "내일 추천" 작은 라벨을 표시할지 결정.
   bool get shouldShowTomorrowHint => shouldShowTomorrowHintFor(todayBestEntry);
@@ -178,17 +170,6 @@ class LaundryHomeController extends ChangeNotifier {
 
   /// featured 가 며칠 뒤인지 (0=오늘, 1=내일, 2=모레…).
   int get featuredDayOffset => featuredDayOffsetOf(featuredEntry);
-
-  /// featured 시점 기준 실외 비교 점수. featured 가 오늘이면 오늘 실외 최고,
-  /// 아니면 다음 좋은 실외 시간대.
-  TimelineEntryModel? get featuredOutdoor => featuredDayOffset == 0
-      ? todayBestOutdoor
-      : bestUpcomingOf(_outdoorTimeline);
-
-  /// featured 시점 기준 실내 비교 점수.
-  TimelineEntryModel? get featuredIndoor => featuredDayOffset == 0
-      ? todayBestIndoor
-      : bestUpcomingOf(_indoorTimeline);
 
   /// 현재 점수의 등급 코드.
   /// 점수 카드 큰 숫자가 [featuredEntry] 기반이므로 액센트 색도 같은 기준
@@ -308,8 +289,6 @@ class LaundryHomeController extends ChangeNotifier {
           saved['bundle'] as Map<String, dynamic>);
       _scoreEnvelope = bundle.current;
       _timeline = bundle.timeline;
-      _outdoorTimeline = bundle.outdoorTimeline;
-      _indoorTimeline = bundle.indoorTimeline;
       _lastRefreshedAt =
           DateTime.tryParse(saved['fetchedAt'] as String? ?? '') ??
               DateTime.now();
@@ -605,8 +584,6 @@ class LaundryHomeController extends ChangeNotifier {
           DateTime.now().difference(cached.fetchedAt) < _scoreCacheTtl) {
         _scoreEnvelope = cached.score;
         _timeline = cached.timeline;
-        _outdoorTimeline = cached.outdoor;
-        _indoorTimeline = cached.indoor;
         _lastRefreshedAt = cached.fetchedAt;
         _error = null;
         notifyListeners();
@@ -620,8 +597,8 @@ class LaundryHomeController extends ChangeNotifier {
 
     try {
       // 빨래량(amount)은 사용자 노출 셀렉터 없이 항상 [kFixedLaundryAmount] 고정.
-      // 홈 번들 1콜 — current + 선택/실외/실내 timeline 을 서버가 묶어서 반환
-      // (기존 4콜 → 1콜: 왕복·rate limit 압력 감소).
+      // 홈 번들 1콜 — current + 선택 timeline 을 서버가 묶어서 반환.
+      // (실외/실내 비교 timeline 은 2026-07-10 카드 간소화로 번들에서 제거)
       final bundle = await _api.homeBundle(
         regionCode: _region.admCode,
         laundryTypeCode: _laundryTypeCode,
@@ -630,8 +607,6 @@ class LaundryHomeController extends ChangeNotifier {
       );
       _scoreEnvelope = bundle.current;
       _timeline = bundle.timeline;
-      _outdoorTimeline = bundle.outdoorTimeline;
-      _indoorTimeline = bundle.indoorTimeline;
       _lastRefreshedAt = DateTime.now();
       _isOfflineData = false;
       // 오프라인 대비 디스크 스냅샷 (fire-and-forget).
@@ -640,8 +615,6 @@ class LaundryHomeController extends ChangeNotifier {
       _scoreCache[key] = _ScoreBundle(
         score: _scoreEnvelope!,
         timeline: _timeline!,
-        outdoor: _outdoorTimeline!,
-        indoor: _indoorTimeline!,
         fetchedAt: _lastRefreshedAt!,
       );
       _scoreCache.removeWhere(
@@ -701,15 +674,11 @@ class _ScoreBundle {
   const _ScoreBundle({
     required this.score,
     required this.timeline,
-    required this.outdoor,
-    required this.indoor,
     required this.fetchedAt,
   });
 
   final ScoreEnvelopeModel score;
   final TimelineEnvelopeModel timeline;
-  final TimelineEnvelopeModel outdoor;
-  final TimelineEnvelopeModel indoor;
   final DateTime fetchedAt;
 }
 

@@ -132,7 +132,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           builder: (context, _) {
             return ListView(
               children: [
-                _SectionHeader('기본 지역'),
+                // "기본"이 아니라 마지막으로 확정해 **저장된** 지역 (앱 시작 시
+                // 이 지역으로 즉시 점수 표시, GPS가 잡히면 자동 갱신).
+                _SectionHeader('저장 지역'),
                 ListTile(
                   leading: const Icon(Icons.place_outlined),
                   title: Text(controller.region.displayName),

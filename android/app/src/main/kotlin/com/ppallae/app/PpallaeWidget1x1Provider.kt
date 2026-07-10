@@ -21,7 +21,11 @@ class PpallaeWidget1x1Provider : HomeWidgetProvider() {
     ) {
         val gradeCode = widgetData.getString("gradeCode", "") ?: ""
         val score = widgetData.getString("score", "-") ?: "-"
-        val gradeLabel = PpallaeWidgetCommon.gradeLabel(gradeCode)
+        // 오늘 안에 추천 시간이 없으면("tomorrow"='1') 등급 라벨 대신 "내일추천"
+        // (색/레이아웃은 등급 그대로 — 제품 결정 2026-07-10).
+        val tomorrow = widgetData.getString("tomorrow", "") == "1"
+        val gradeLabel =
+            if (tomorrow) "내일추천" else PpallaeWidgetCommon.gradeLabel(gradeCode)
         // 신선도: 데이터가 오래됐으면(3h+) 점수/등급을 흐리게 → stale 을 눈치채게.
         // 1x1 은 공간이 없어 "n분 전" 텍스트 대신 흐림 처리만 한다.
         val updatedAtMs = PpallaeWidgetCommon.parseUpdatedAtMs(widgetData)

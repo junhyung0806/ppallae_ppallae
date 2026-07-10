@@ -56,8 +56,6 @@ class _FakeApiClient extends PpallaeApiClient {
         score: _score,
       ),
       timeline: _emptyTimeline,
-      outdoorTimeline: _emptyTimeline,
-      indoorTimeline: _emptyTimeline,
     );
   }
 

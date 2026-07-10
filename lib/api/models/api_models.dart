@@ -239,6 +239,7 @@ class LaundryScoreModel {
     required this.grade,
     required this.warningTexts,
     this.estimatedCompletionAt,
+    this.recommendTomorrow = false,
   });
 
   factory LaundryScoreModel.fromJson(Map<String, dynamic> json) {
@@ -256,6 +257,7 @@ class LaundryScoreModel {
       estimatedCompletionAt: json['estimatedCompletionAt'] == null
           ? null
           : DateTime.parse(json['estimatedCompletionAt'] as String),
+      recommendTomorrow: json['recommendTomorrow'] as bool? ?? false,
     );
   }
 
@@ -269,6 +271,10 @@ class LaundryScoreModel {
 
   /// 예상 건조 완료 시각. null = 건조창 내 못 마름 or 미제공.
   final DateTime? estimatedCompletionAt;
+
+  /// 오늘(KST) 안에 추천할 시작 시간이 없어 "내일 추천"인 상태.
+  /// 등급 라벨 자리에 "내일 추천"을 표시한다 (색/폰트는 등급 스타일 그대로).
+  final bool recommendTomorrow;
 }
 
 class WeatherSummaryModel {
@@ -402,13 +408,13 @@ class TimelineEnvelopeModel {
 }
 
 /// `GET /laundry-score/home` 응답 — 홈 화면 번들 (4콜→1콜).
-/// current + 선택 장소 timeline + 실외/실내 비교용 timeline.
+/// current + 선택 장소 timeline.
+/// (실외/실내 비교 timeline 은 2026-07-10 카드 간소화로 번들에서 제거 —
+///  과거 오프라인 스냅샷에 남은 outdoorTimeline/indoorTimeline 키는 무시된다.)
 class HomeBundleModel {
   const HomeBundleModel({
     required this.current,
     required this.timeline,
-    required this.outdoorTimeline,
-    required this.indoorTimeline,
     this.rawJson = const {},
   });
 
@@ -418,18 +424,12 @@ class HomeBundleModel {
           json['current'] as Map<String, dynamic>),
       timeline: TimelineEnvelopeModel.fromJson(
           json['timeline'] as Map<String, dynamic>),
-      outdoorTimeline: TimelineEnvelopeModel.fromJson(
-          json['outdoorTimeline'] as Map<String, dynamic>),
-      indoorTimeline: TimelineEnvelopeModel.fromJson(
-          json['indoorTimeline'] as Map<String, dynamic>),
       rawJson: json,
     );
   }
 
   final ScoreEnvelopeModel current;
   final TimelineEnvelopeModel timeline;
-  final TimelineEnvelopeModel outdoorTimeline;
-  final TimelineEnvelopeModel indoorTimeline;
 
   /// 원본 응답 JSON — 오프라인 캐시(디스크 영속화) 재직렬화용.
   /// 모델별 toJson 을 전부 만드는 대신 원문을 그대로 보관한다.

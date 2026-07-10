@@ -32,7 +32,11 @@ class PpallaeWidget3x1Provider : HomeWidgetProvider() {
         val stale = PpallaeWidgetCommon.isStale(updatedAtMs)
         val freshness = PpallaeWidgetCommon.freshnessLabel(updatedAtMs)
         val recoText = if (freshness.isNotEmpty()) "$baseReco · $freshness" else baseReco
-        val gradeLabel = PpallaeWidgetCommon.gradeLabel(gradeCode)
+        // 오늘 안에 추천 시간이 없으면("tomorrow"='1') 등급 라벨 대신 "내일추천"
+        // (색/레이아웃은 등급 그대로 — 제품 결정 2026-07-10).
+        val tomorrow = widgetData.getString("tomorrow", "") == "1"
+        val gradeLabel =
+            if (tomorrow) "내일추천" else PpallaeWidgetCommon.gradeLabel(gradeCode)
         val scoreInt = scoreStr.toIntOrNull() ?: 0
         val dotIndex = gradeToDotIndex(gradeCode)
 
