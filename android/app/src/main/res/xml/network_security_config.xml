@@ -13,4 +13,10 @@
         <domain includeSubdomains="false">127.0.0.1</domain>
         <domain includeSubdomains="false">10.0.2.2</domain>
     </domain-config>
+    <!-- 카카오맵 WebView: 페이지 origin이 http(localhost:8080)라 SDK가 부속
+         스크립트·지도 타일을 http://*.daumcdn.net 평문으로 받아옴. 차단하면
+         "kakao.maps.LatLng is not a constructor"로 지도가 깨진다(실기기 확인). -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">daumcdn.net</domain>
+    </domain-config>
 </network-security-config>
