@@ -34,8 +34,7 @@ class _FakeApiClient extends PpallaeApiClient {
     skyCondition: 'CLEAR',
   );
 
-  static const _emptyTimeline =
-      TimelineEnvelopeModel(bestStartTimeRange: null, timeline: []);
+  static const _emptyTimeline = TimelineEnvelopeModel(timeline: []);
 
   @override
   Future<HomeBundleModel> homeBundle({
@@ -144,33 +143,28 @@ void main() {
     });
   });
 
-  group('featured 후보 롤오버 (밤 0점 방지)', () {
-    test('dayOffsetLabel 매핑', () {
-      expect(dayOffsetLabel(0), '');
-      expect(dayOffsetLabel(1), '내일');
-      expect(dayOffsetLabel(2), '모레');
-      expect(dayOffsetLabel(3), '3일 뒤');
-    });
-
-    test('가까운 시간이 낮고(<50) 나중이 높으면(>=50) featured 는 나중 것', () {
-      // 지금 이후로만 배치: +1h 30점(가망 없음), +20h 70점(다음 좋은 시간대).
-      // 오늘/내일 어느 쪽으로 갈리든 featuredEntryOf 는 항상 70점 후보를 골라야 한다.
+  // (2026-07-10) featured 롤오버 테스트 삭제 — "내일" 판단은 백엔드
+  // recommendTomorrow 가 유일한 소스가 되며 앱 롤오버 로직 자체를 제거.
+  group('todayBestOf (오늘 후보만 — 내일로 롤오버하지 않음)', () {
+    test('오늘 안의 최고 점수 후보를 고른다', () {
       final nowUtc = DateTime.now().toUtc();
       final env = TimelineEnvelopeModel(
-        bestStartTimeRange: null,
         timeline: [
-          _entry(nowUtc.add(const Duration(hours: 1)), 30),
-          _entry(nowUtc.add(const Duration(hours: 20)), 70),
+          _entry(nowUtc.add(const Duration(minutes: 30)), 30),
+          _entry(nowUtc.add(const Duration(minutes: 90)), 70),
+          // +26h 는 무조건 내일 — 점수가 더 높아도 선택되면 안 된다.
+          _entry(nowUtc.add(const Duration(hours: 26)), 95),
         ],
       );
-      final featured = featuredEntryOf(env);
-      expect(featured, isNotNull);
-      expect(featured!.overallScore, 70);
+      final best = todayBestOf(env);
+      expect(best, isNotNull);
+      // 오늘 남은 시간에 따라 30/70 중 하나지만, 95(내일)는 절대 아님.
+      expect(best!.overallScore, isNot(95));
     });
 
     test('후보가 없으면 null', () {
-      final env = TimelineEnvelopeModel(bestStartTimeRange: null, timeline: []);
-      expect(featuredEntryOf(env), isNull);
+      const env = TimelineEnvelopeModel(timeline: []);
+      expect(todayBestOf(env), isNull);
     });
   });
 

@@ -389,21 +389,18 @@ class TimelineEntryModel {
 }
 
 class TimelineEnvelopeModel {
-  const TimelineEnvelopeModel({
-    required this.bestStartTimeRange,
-    required this.timeline,
-  });
+  // (2026-07-10) bestStartTimeRange 제거 — UI 소비처가 없던 반좀비 필드.
+  // 추천 시각 표시는 timeline 오늘 후보(todayBestOf) + recommendTomorrow 로 계산.
+  const TimelineEnvelopeModel({required this.timeline});
 
   factory TimelineEnvelopeModel.fromJson(Map<String, dynamic> json) {
     return TimelineEnvelopeModel(
-      bestStartTimeRange: json['bestStartTimeRange'] as String?,
       timeline: (json['timeline'] as List<dynamic>)
           .map((e) => TimelineEntryModel.fromJson(e as Map<String, dynamic>))
           .toList(),
     );
   }
 
-  final String? bestStartTimeRange;
   final List<TimelineEntryModel> timeline;
 }
 

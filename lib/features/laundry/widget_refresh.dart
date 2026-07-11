@@ -67,11 +67,11 @@ void widgetRefreshDispatcher() {
           dryingPlace: dryingPlace,
           laundryAmount: kFixedLaundryAmount,
         );
-        final featured = featuredEntryOf(bundle.timeline);
+        // 오늘 후보만 사용 — "내일" 판단은 백엔드 recommendTomorrow 가 유일한
+        // 소스 (envelope.score 에 실려 오고 WidgetService 가 라벨을 바꾼다).
         await WidgetService.update(
           envelope: bundle.current,
-          featured: featured,
-          dayOffset: featuredDayOffsetOf(featured),
+          featured: todayBestOf(bundle.timeline),
         );
       } finally {
         api.dispose();

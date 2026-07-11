@@ -6,7 +6,6 @@ import '../../api/models/api_models.dart';
 import '../../core/kst_time.dart';
 import 'grade_utils.dart';
 import 'laundry_home_controller.dart';
-import 'timeline_best.dart';
 import 'map/kakao_map_view.dart';
 import 'map_fullscreen_screen.dart';
 import 'settings_screen.dart';
@@ -877,9 +876,9 @@ class _ScoreCard extends StatelessWidget {
     // 시간이 없으면 백엔드가 recommendTomorrow 를 내려주고, 이때는 내일 시각으로
     // 롤오버하지 않고 오늘 점수 그대로 + 등급 라벨 자리에 "내일 추천"만 표시한다.
     final recommendTomorrow = envelope.score.recommendTomorrow;
-    final featured = recommendTomorrow ? null : controller.featuredEntry;
-    final dayOffset = recommendTomorrow ? 0 : controller.featuredDayOffset;
-    final dayLabel = dayOffsetLabel(dayOffset); // '' | 내일 | 모레 …
+    // featured = 오늘 최적 후보만. (과거 featuredEntryOf 의 "내일 롤오버"는
+    // 백엔드 recommendTomorrow 와 기준이 다른 이중 로직이라 제거)
+    final featured = recommendTomorrow ? null : controller.todayBestEntry;
     final loading = controller.loading;
 
     final int overallScore =
@@ -899,12 +898,10 @@ class _ScoreCard extends StatelessWidget {
     final color = _gradeColor(grade);
     final iconAsset = _gradeIconAsset(grade);
 
-    // 추천 시간 박스 라벨 = "(내일) HH:MM ~ HH:MM". 종료 시각은 시작 + 45분(세탁) hangAt 추정.
+    // 추천 시간 박스 라벨 = "HH:MM ~ HH:MM" (오늘). 종료 시각은 시작 + 45분(세탁) hangAt 추정.
     final hasRecommendation = featured != null;
     final String range = hasRecommendation
-        ? (dayLabel.isEmpty
-            ? _formatTodayRecoRange(featured.forecastAt)
-            : '$dayLabel ${_formatTodayRecoRange(featured.forecastAt)}')
+        ? _formatTodayRecoRange(featured.forecastAt)
         : '지금은 빨래 추천이 어려워요';
     final double dryMin =
         featured?.estimatedDryHoursMin ?? envelope.score.estimatedDryHoursMin;

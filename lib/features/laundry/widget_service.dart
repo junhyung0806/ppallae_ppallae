@@ -5,7 +5,6 @@ import '../../api/models/api_models.dart';
 import '../../core/error_codes.dart';
 import '../../core/kst_time.dart';
 import 'grade_utils.dart';
-import 'timeline_best.dart';
 
 /// 홈 위젯(Android)에 빨래지수 요약을 전달한다. 웹/미지원 플랫폼에서는 무시.
 class WidgetService {
@@ -24,7 +23,6 @@ class WidgetService {
   static Future<void> update({
     required ScoreEnvelopeModel envelope,
     TimelineEntryModel? featured,
-    int dayOffset = 0,
   }) async {
     if (kIsWeb) {
       const PpallaeError(
@@ -73,8 +71,9 @@ class WidgetService {
         await HomeWidget.saveWidgetData<String>('recoStart', '내일');
         await HomeWidget.saveWidgetData<String>('recoEnd', '');
       } else {
-        // recoStart 에 day 접두("내일") 포함 → 위젯 "추천 시간 : 내일 10:00 ~ 10:45".
-        final (recoStart, recoEnd) = _recoFromFeatured(effFeatured, dayOffset);
+        // featured 는 항상 **오늘** 후보 (앱 자체 내일 롤오버는 제거됨 —
+        // "내일" 판단은 백엔드 recommendTomorrow 가 유일한 소스).
+        final (recoStart, recoEnd) = _recoFromFeatured(effFeatured);
         await HomeWidget.saveWidgetData<String>('recoStart', recoStart);
         await HomeWidget.saveWidgetData<String>('recoEnd', recoEnd);
       }
@@ -132,16 +131,13 @@ class WidgetService {
   }
 }
 
-/// featured 후보의 시작/종료 시각 라벨 (KST 벽시계 기준).
-/// recoStart = (내일 )HH:MM, recoEnd = 시작 + 세탁 45분 (hangAt 추정).
-/// dayOffset>0 이면 시작 시각 앞에 "내일/모레" 접두를 붙인다.
+/// 오늘 후보의 시작/종료 시각 라벨 (KST 벽시계 기준).
+/// recoStart = HH:MM, recoEnd = 시작 + 세탁 45분 (hangAt 추정).
+/// ("내일/모레" 접두는 제거 — 내일 판단은 백엔드 recommendTomorrow 가 유일한 소스)
 /// best 가 null 이면 ("지금은", "비추천") 폴백.
-(String, String) _recoFromFeatured(TimelineEntryModel? best, int dayOffset) {
+(String, String) _recoFromFeatured(TimelineEntryModel? best) {
   if (best == null) return ('지금은', '비추천');
   final hang = best.forecastAt.add(const Duration(minutes: 45));
-  final label = dayOffsetLabel(dayOffset);
-  final start =
-      label.isEmpty ? formatKstHm(best.forecastAt) : '$label ${formatKstHm(best.forecastAt)}';
-  return (start, formatKstHm(hang));
+  return (formatKstHm(best.forecastAt), formatKstHm(hang));
 }
 

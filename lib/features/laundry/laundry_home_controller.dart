@@ -145,38 +145,22 @@ class LaundryHomeController extends ChangeNotifier {
 
   // ── 추천 시간: 오늘 기준 (현재 시각 ~ 오늘 KST 자정) ──
   //
-  // 점수 카드의 큰 숫자/등급/건조시간/추천 시간 박스는 모두 timeline 의 오늘
-  // 후보 중 점수 최대값 기준으로 계산한다. 백엔드 score API 의 글로벌 best
-  // (30시간 horizon, 보통 내일 새벽)와는 다름.
-  //
-  // 오늘 후보가 0개 (=자정 직전 등) 거나 오늘 최대 점수가 60 미만이면
-  // [shouldShowTomorrowHint] 가 true 가 되어 박스 옆에 "내일 추천" 라벨 표시.
+  // 제품 결정(2026-07-10): 앱은 **오늘만** 본다. "내일" 판단의 유일한 소스는
+  // 백엔드 recommendTomorrow 플래그다. 과거의 앱 자체 롤오버
+  // (featuredEntryOf: 오늘<50이면 내일 후보로 교체)는 백엔드와 기준이 달라
+  // "내일 10:00" 같은 구체 시각이 새어나오는 이중 로직이라 제거했다.
 
   // todayBestOf 로직은 위젯 백그라운드 워커와 공유 — timeline_best.dart 참고.
 
   /// 사용자 선택 dryingPlace 기준 오늘 최적 후보. 카드 큰 숫자/추천 박스의 원천.
+  /// (recommendTomorrow 상태에서는 카드가 이 값을 쓰지 않고 오늘 점수만 표시)
   TimelineEntryModel? get todayBestEntry => todayBestOf(_timeline);
 
-  /// 오늘 최적 점수가 60 미만이거나 오늘 후보 자체가 없으면 true.
-  /// 박스 옆에 "내일 추천" 작은 라벨을 표시할지 결정.
-  bool get shouldShowTomorrowHint => shouldShowTomorrowHintFor(todayBestEntry);
-
-  // ── 헤드라인(큰 숫자/위젯) 후보 ──
-  // 오늘이 빨래할 만하면(≥NORMAL) 오늘, 아니면 다음 좋은 시간대(내일 아침 등)로 롤오버.
-  // 밤/악천후에 "0점·최악"만 뜨는 문제를 막는다. featured_* 는 홈·위젯 공통 소스.
-
-  /// 헤드라인에 표시할 최적 후보 (오늘 또는 롤오버된 다음날).
-  TimelineEntryModel? get featuredEntry => featuredEntryOf(_timeline);
-
-  /// featured 가 며칠 뒤인지 (0=오늘, 1=내일, 2=모레…).
-  int get featuredDayOffset => featuredDayOffsetOf(featuredEntry);
-
   /// 현재 점수의 등급 코드.
-  /// 점수 카드 큰 숫자가 [featuredEntry] 기반이므로 액센트 색도 같은 기준
-  /// (밤엔 오늘 0점이 아니라 롤오버된 내일 점수 색을 따라감 → 카드와 색 일치).
+  /// 점수 카드 큰 숫자가 [todayBestEntry] 기반이므로 액센트 색도 같은 기준.
   /// timeline 데이터가 아직 없을 때만 score API 로 폴백.
   String get currentGradeCode {
-    final f = featuredEntry;
+    final f = todayBestEntry;
     if (f != null) {
       if (f.grade.isNotEmpty) return f.grade;
       return gradeFromScore(f.overallScore);
@@ -551,8 +535,7 @@ class LaundryHomeController extends ChangeNotifier {
       if (score != null) {
         await WidgetService.update(
           envelope: score,
-          featured: featuredEntry,
-          dayOffset: featuredDayOffset,
+          featured: todayBestEntry,
         );
       }
     } else {
@@ -623,8 +606,7 @@ class LaundryHomeController extends ChangeNotifier {
       if (_widgetEnabled) {
         WidgetService.update(
           envelope: _scoreEnvelope!,
-          featured: featuredEntry,
-          dayOffset: featuredDayOffset,
+          featured: todayBestEntry,
         );
       }
     } on PpallaeApiException catch (e) {

@@ -20,61 +20,9 @@ TimelineEntryModel? todayBestOf(TimelineEnvelopeModel? env) {
   return best;
 }
 
-/// 오늘 최적 점수가 60 미만이거나 오늘 후보 자체가 없으면 "내일 추천" 라벨 표시.
-bool shouldShowTomorrowHintFor(TimelineEntryModel? todayBest) {
-  return todayBest == null || todayBest.overallScore < 60;
-}
-
-/// 지금(KST) 이후 전체 타임라인에서 점수 최고 후보. 오늘/내일/모레 무관.
-/// 밤이나 악천후로 오늘이 가망 없을 때 "다음 좋은 시간대"를 찾는 데 쓴다.
-TimelineEntryModel? bestUpcomingOf(TimelineEnvelopeModel? env) {
-  if (env == null) return null;
-  final now = nowKst();
-  TimelineEntryModel? best;
-  for (final e in env.timeline) {
-    if (toKst(e.forecastAt).isBefore(now)) continue;
-    if (best == null || e.overallScore > best.overallScore) best = e;
-  }
-  return best;
-}
-
-/// 헤드라인(홈 큰 숫자·위젯)에 보여줄 후보 결정.
-///
-/// 오늘 남은 시간에 NORMAL(50점) 이상 후보가 있으면 오늘 최고를 보여준다
-/// (오늘 빨래할 만하면 오늘 하라는 뜻). 그렇지 않으면(밤/비 등 오늘 가망 없음)
-/// 다음 좋은 시간대(보통 내일 아침)로 롤오버한다.
-///
-/// 위젯 우선 앱에서 밤마다 "0점·최악"이 뜨는 문제를 막는 핵심 로직.
-const int kTodayViableThreshold = 50;
-
-TimelineEntryModel? featuredEntryOf(TimelineEnvelopeModel? env) {
-  final today = todayBestOf(env);
-  if (today != null && today.overallScore >= kTodayViableThreshold) {
-    return today;
-  }
-  return bestUpcomingOf(env) ?? today;
-}
-
-/// featured 후보가 며칠 뒤인지 (0=오늘, 1=내일, 2=모레…). KST 달력 기준.
-int featuredDayOffsetOf(TimelineEntryModel? featured) {
-  if (featured == null) return 0;
-  final todayMidnight = kstStartOfToday();
-  final f = toKst(featured.forecastAt);
-  final fMidnight = DateTime.utc(f.year, f.month, f.day);
-  final days = fMidnight.difference(todayMidnight).inDays;
-  return days < 0 ? 0 : days;
-}
-
-/// dayOffset → 한글 라벨 접두 (0=빈문자열, 1=내일, 2=모레, 그 외 N일 뒤).
-String dayOffsetLabel(int offset) {
-  switch (offset) {
-    case 0:
-      return '';
-    case 1:
-      return '내일';
-    case 2:
-      return '모레';
-    default:
-      return '$offset일 뒤';
-  }
-}
+// NOTE(2026-07-10): 아래 헬퍼들 제거 — "내일" 판단은 백엔드 recommendTomorrow
+// 플래그가 유일한 소스가 되면서 전부 이중 로직/죽은 코드가 됐다.
+//   shouldShowTomorrowHintFor (<60 힌트 — UI 사용처 0)
+//   bestUpcomingOf / featuredEntryOf (오늘<50 이면 내일로 롤오버 — 백엔드와
+//     기준이 달라 "내일 10:00" 구체 시각이 새어나오는 원인)
+//   featuredDayOffsetOf / dayOffsetLabel ("내일/모레" 접두)
